@@ -21,6 +21,7 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 from utils.pvd_utils import *
+from utils.master_utils import *
 from omegaconf import OmegaConf
 from pytorch_lightning import seed_everything
 from utils.diffusion_utils import instantiate_from_config,load_model_checkpoint,image_guided_synthesis
@@ -39,8 +40,25 @@ class ViewCrafter:
                 self.images, self.img_ori = self.load_initial_images(image_dir=self.opts.image_dir)
                 self.run_dust3r(input_images=self.images)
             elif os.path.isdir(self.opts.image_dir):
-                self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
-                self.run_dust3r(input_images=self.images, clean_pc = True)    
+                first_file = os.listdir(self.opts.image_dir)[0]
+                if first_file.endswith(".mp4"):
+                    print("Videos in folder")
+                    setup_structure(self.opts.save_dir, self.opts.image_dir)
+                    original_save_dir = self.opts.save_dir
+
+                    for frame in os.listdir(os.path.join(self.opts.save_dir, "inputs")):
+                        self.opts.image_dir = os.path.join(self.opts.save_dir, "inputs", frame)
+                        self.opts.save_dir = os.path.join(self.opts.save_dir, "results", frame)
+                        os.mkdir(self.opts.save_dir)
+                        self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
+                        self.run_dust3r(input_images=self.images, clean_pc=True)
+                        self.nvs_sparse_view_interp()
+
+                        self.opts.save_dir = original_save_dir
+
+                else:
+                    self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
+                    self.run_dust3r(input_images=self.images, clean_pc = True)
             else:
                 print(f"{self.opts.image_dir} doesn't exist")           
         
@@ -232,8 +250,15 @@ class ViewCrafter:
         save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion{iter}.mp4'))
         # torch.Size([25, 576, 1024, 3])
         return diffusion_results
-    
+
+
+
+    """
+    ####################################################################################################################
+    """
+
     def nvs_sparse_view_interp(self):
+
 
         c2ws = self.scene.get_im_poses().detach()
         principal_points = self.scene.get_principal_points().detach()
@@ -277,6 +302,10 @@ class ViewCrafter:
         save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'))
         # torch.Size([25, 576, 1024, 3])
         return diffusion_results
+    """
+    ####################################################################################################################
+    """
+
 
     def nvs_single_view_eval(self):
 
