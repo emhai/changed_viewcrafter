@@ -1,13 +1,14 @@
 python inference.py \
---image_dir test/images_sparse/family \
---out_dir ./output \
+--image_dir /media/emmahaidacher/Volume/DATASETS/INTERNET/espresso_short/pics2/ \
+--out_dir /media/emmahaidacher/Volume/RESULTS/espresso_changed \
 --mode 'sparse_view_interp' \
 --bg_trd 0.2 \
 --seed 123 \
 --ckpt_path ./checkpoints/model_sparse.ckpt \
 --config configs/inference_pvd_1024.yaml \
 --ddim_steps 50 \
---video_length 25 \
+--video_length 12 \
 --device 'cuda:0' \
 --height 576 --width 1024 \
---model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
+--model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \
+--master 1

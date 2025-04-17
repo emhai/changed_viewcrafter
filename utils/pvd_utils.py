@@ -34,6 +34,7 @@ from dust3r.utils.device import to_numpy
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from torchvision.transforms import CenterCrop, Compose, Resize
+import json
 
 def save_video(data,images_path,folder=None):
     if isinstance(data, np.ndarray):
@@ -245,8 +246,26 @@ def generate_traj(c2ws,H,W,fs,c,device):
 
 def generate_traj_interp(c2ws,H,W,fs,c,ns,device):
 
-    c2ws = interp_traj(c2ws,n_inserts= ns,device=device)
-    num_views = c2ws.shape[0] 
+    n_poses = c2ws.shape[0]
+    interpolated_poses = []
+    s = np.expand_dims(c2ws[0].cpu().numpy(), axis=0)
+    s = torch.from_numpy(s).to(device)
+    interpolated_poses.append(s)
+
+    for i in range(n_poses - 1):
+        start_pose = c2ws[i]
+        end_pose = c2ws[(i + 1) % n_poses]
+        for j in range(ns - 2):
+            middle_pose = start_pose + ((j + 1) * (1/ns)) * (end_pose - start_pose)
+            middle_pose = np.expand_dims(middle_pose.cpu().numpy(), axis=0)
+            middle_pose = torch.from_numpy(middle_pose).to(device)
+            interpolated_poses.append(middle_pose)
+
+    interpolated_poses.append(c2ws[-1:])
+
+    c2ws = torch.cat(interpolated_poses, dim=0)
+
+    num_views = c2ws.shape[0]
     R, T = c2ws[:,:3, :3], c2ws[:,:3, 3:]
     R = torch.stack([-R[:,:, 0], -R[:,:, 1], R[:,:, 2]], 2) # from RDF to LUF for Rotation
     new_c2w = torch.cat([R, T], 2)
@@ -254,10 +273,10 @@ def generate_traj_interp(c2ws,H,W,fs,c,ns,device):
     R_new, T_new = w2c[:,:3, :3].permute(0,2,1), w2c[:,:3, 3] # convert R to row-major matrix
     image_size = ((H, W),)  # (h, w)
 
-    fs = interpolate_sequence(fs,ns-2,device=device)
-    c = interpolate_sequence(c,ns-2,device=device)
+    fs = interpolate_sequence(fs,num_views - 2,device=device)
+    c = interpolate_sequence(c,num_views - 2,device=device)
     cameras = PerspectiveCameras(focal_length=fs, principal_point=c, in_ndc=False, image_size=image_size, R=R_new, T=T_new, device=device)
-    
+
     return cameras, num_views
 
 def generate_traj_specified(c2ws_anchor,H,W,fs,c,theta, phi,d_r,d_x,d_y,frame,device):
