@@ -26,7 +26,6 @@ from pytorch_lightning import seed_everything
 from utils.diffusion_utils import instantiate_from_config,load_model_checkpoint,image_guided_synthesis
 from pathlib import Path
 from torchvision.utils import save_image
-import ast
 
 class ViewCrafter:
     def __init__(self, opts, gradio = False):
@@ -34,10 +33,6 @@ class ViewCrafter:
         self.device = opts.device
         self.setup_dust3r()
         self.setup_diffusion()
-        self.known_poses = None
-
-        #if opts.master is True:
-
         # initialize ref images, pcd
         if not gradio:
             if os.path.isfile(self.opts.image_dir):
@@ -50,31 +45,13 @@ class ViewCrafter:
                 print(f"{self.opts.image_dir} doesn't exist")           
         
     def run_dust3r(self, input_images,clean_pc = False):
-
         pairs = make_pairs(input_images, scene_graph='complete', prefilter=None, symmetrize=True)
-
         output = inference(pairs, self.dust3r, self.device, batch_size=self.opts.batch_size)
 
         mode = GlobalAlignerMode.PointCloudOptimizer #if len(self.images) > 2 else GlobalAlignerMode.PairViewer
         scene = global_aligner(output, device=self.device, mode=mode)
-
-        file_path = "/home/emmahaidacher/Masterthesis/test_camera_poses.pt" # todo
-        already_predicted = os.path.exists(file_path)
-        already_predicted = False
-
-        if already_predicted:
-            print("Found predicted camera poses")
-            predicted_poses =  torch.load(file_path)  # shape: (n, 4, 4)
-            scene.preset_pose(predicted_poses)
-
         if mode == GlobalAlignerMode.PointCloudOptimizer:
             loss = scene.compute_global_alignment(init='mst', niter=self.opts.niter, schedule=self.opts.schedule, lr=self.opts.lr)
-
-        if not already_predicted:
-            print("Saving predicted camera poses")
-            pred_poses = scene.get_im_poses()
-            torch.save(pred_poses, file_path)
-
 
         if clean_pc:
             self.scene = scene.clean_pointcloud()
@@ -215,14 +192,12 @@ class ViewCrafter:
         imgs = np.array(self.scene.imgs)
 
         if self.opts.mode == 'single_view_ref_iterative':
-            print("single_view_ref_iterative")
             c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=0, r=radius, elevation=self.opts.elevation, device=self.device)
             camera_traj,num_views = generate_traj_specified(c2ws[0:1], H, W, focals[0:1], principal_points[0:1], self.opts.d_theta[iter], self.opts.d_phi[iter], self.opts.d_r[iter],self.opts.video_length, self.device)
             render_results, viewmask = self.run_render(pcd, imgs,masks, H, W, camera_traj,num_views)
             render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
             render_results[0] = self.img_ori
         elif self.opts.mode == 'single_view_1drc_iterative':
-            print("single_view_1drc_iterative")
             self.opts.elevation -= self.opts.d_theta[iter-1]
             c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius, elevation=self.opts.elevation, device=self.device)
             camera_traj,num_views = generate_traj_specified(c2ws[-1:], H, W, focals[-1:], principal_points[-1:], self.opts.d_theta[iter], self.opts.d_phi[iter], self.opts.d_r[iter],self.opts.video_length, self.device)
@@ -230,7 +205,6 @@ class ViewCrafter:
             render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
             render_results[0] = (self.images[-1]['img_ori'].squeeze(0).permute(1,2,0)+1.)/2.
         elif self.opts.mode == 'single_view_nbv':
-            print("single_view_nbv")
             c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius, elevation=self.opts.elevation, device=self.device)
             ## 输入candidate->渲染mask->最大mask对应的pose作为nbv
             ## nbv模式下self.opts.d_theta[0], self.opts.d_phi[0]代表search space中的网格theta, phi之间的间距; self.opts.d_phi[0]的符号代表方向,分为左右两个方向
@@ -455,7 +429,7 @@ class ViewCrafter:
 
         img_gts = []
         for i in range(len(image_files)):
-            img_gts.append((images[i]['img_ori'].squeeze(0).permute(1,2,0)+1.)/2.) # switching from chw to hwc for numpy and normalizes pixel values
+            img_gts.append((images[i]['img_ori'].squeeze(0).permute(1,2,0)+1.)/2.) 
 
         return images, img_gts
 

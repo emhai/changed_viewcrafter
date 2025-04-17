@@ -5,8 +5,6 @@ def get_parser():
     parser = argparse.ArgumentParser()
 
     ## general
-    parser.add_argument('--master',  type=bool, default=False, help='My personal master - yes, no?')
-
     parser.add_argument('--image_dir', type=str, default='./test/images/fruit.png', help='Image file path')
     parser.add_argument('--out_dir', type=str, default='./output', help='Output directory')
     parser.add_argument('--device', type=str, default='cuda:0', help='The device to use')
