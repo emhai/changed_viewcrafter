@@ -9,6 +9,8 @@ from lvdm.models.samplers.ddim import DDIMSampler
 from lvdm.models.samplers.ddim_multiplecond import DDIMSampler as DDIMSampler_multicond
 from einops import rearrange, repeat
 
+# This is https://github.com/Doubiiu/DynamiCrafter/blob/main/utils/utils.py DynamiCrafter utils
+
 def count_params(model, verbose=False):
     total_params = sum(p.numel() for p in model.parameters())
     if verbose:
@@ -80,6 +82,8 @@ def setup_dist(args):
         init_method='env://'
     )
 
+
+# From here, new code, not DynamiCrafter
 def load_model_checkpoint(model, ckpt):
     state_dict = torch.load(ckpt, map_location="cpu")
     if "state_dict" in list(state_dict.keys()):

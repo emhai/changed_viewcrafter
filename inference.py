@@ -15,6 +15,7 @@ if __name__=="__main__":
     os.makedirs(opts.save_dir,exist_ok=True)
     pvd = ViewCrafter(opts)
 
+
     if opts.mode == 'single_view_target':
         pvd.nvs_single_view()
 
@@ -25,7 +26,8 @@ if __name__=="__main__":
         pvd.nvs_single_view_eval()
 
     elif opts.mode == 'sparse_view_interp':
-        pvd.nvs_sparse_view_interp()
+        if not opts.master:
+            pvd.nvs_sparse_view_interp()
 
     else:
         raise KeyError(f"Invalid Mode: {opts.mode}")

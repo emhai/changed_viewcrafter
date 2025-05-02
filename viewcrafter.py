@@ -41,6 +41,8 @@ class ViewCrafter:
                 self.run_dust3r(input_images=self.images)
             elif os.path.isdir(self.opts.image_dir):
                 first_file = os.listdir(self.opts.image_dir)[0]
+
+                # videos as input
                 if first_file.endswith(".mp4"):
                     print("Videos in folder")
                     setup_structure(self.opts.save_dir, self.opts.image_dir)
@@ -56,6 +58,11 @@ class ViewCrafter:
 
                         self.opts.save_dir = original_save_dir
 
+                    separate_cameras(os.path.join(self.opts.save_dir, "results"), os.path.join(self.opts.save_dir, "cameras"))
+
+
+
+                # images as input
                 else:
                     self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
                     self.run_dust3r(input_images=self.images, clean_pc = True)
@@ -289,7 +296,7 @@ class ViewCrafter:
         
         for i in range(len(self.img_ori)):
             render_results[i*(self.opts.video_length - 1)] = self.img_ori[i]
-        save_video(render_results, os.path.join(self.opts.save_dir, f'render.mp4'))
+        save_video(render_results, os.path.join(self.opts.save_dir, f'render.mp4'), os.path.join(self.opts.save_dir, f'render_frames'))
         save_pointcloud_with_normals(imgs, pcd, msk=masks, save_path=os.path.join(self.opts.save_dir, f'pcd.ply') , mask_pc=mask_pc, reduce_pc=False)
 
         diffusion_results = []
@@ -299,7 +306,7 @@ class ViewCrafter:
             diffusion_results.append(self.run_diffusion(render_results[i*(self.opts.video_length - 1):self.opts.video_length+i*(self.opts.video_length - 1)]))
         print(f'Finish!\n')
         diffusion_results = torch.cat(diffusion_results)
-        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'))
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, f'diffusion_frames'))
         # torch.Size([25, 576, 1024, 3])
         return diffusion_results
     """

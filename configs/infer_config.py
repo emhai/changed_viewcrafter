@@ -10,6 +10,7 @@ def get_parser():
     parser.add_argument('--device', type=str, default='cuda:0', help='The device to use')
     parser.add_argument('--exp_name',  type=str, default=None, help='Experiment name, use image file name by default')
 
+
     ## renderer
     parser.add_argument('--mode',  type=str,  default='single_view_txt', help="Currently we support 'single_view_txt' and 'single_view_target'")
     parser.add_argument('--traj_txt',  type=str, help="Required for 'single_view_txt' mode, a txt file that specify camera trajectory")
