@@ -3,10 +3,50 @@ import shutil
 import subprocess
 
 import cv2
+import numpy as np
+import torch
+from PIL import Image
 
 from configs.master_config import OUTPUT_LOG_FILE, CAMERA_FRAMES_DIR, INPUTS_DIR, RESULTS_DIR, SEPERATED_CAMERAS_DIR, \
-    ORIGINAL_VIDEOS_DIR, DIFFUSION_FRAMES, RENDER_FRAMES
+    ORIGINAL_VIDEOS_DIR, DIFFUSION_FRAMES, RENDER_FRAMES, MASKS_DIR
 
+import matplotlib.pyplot as plt
+
+def save_masks(mask_list, save_dir, visualize=True, save=True):
+    os.makedirs(save_dir)
+    for i, msk in enumerate(mask_list):
+        if isinstance(msk, torch.Tensor):
+            msk_np = msk.cpu().detach().numpy()
+        else:
+            msk_np = msk
+
+        msk_img = (msk_np * 255).astype(np.uint8)
+
+        if save:
+            mask_img = Image.fromarray(msk_img)
+            mask_img.save(os.path.join(save_dir, f"mask_{i}.png"))
+
+        if visualize:
+            plt.imshow(msk_np, cmap='gray')
+            plt.title(f"Mask {i}")
+            plt.show()
+
+def save_depth(depth_list, save_dir, visualize=True, save=True):
+    os.makedirs(save_dir)
+
+    for i, dpt in enumerate(depth_list):
+        dpt_np = dpt.cpu().detach().numpy()
+        dpt_norm = ((dpt_np - dpt_np.min()) / (dpt_np.ptp() + 1e-8) * 255).astype(np.uint8)
+
+        if save:
+            depth_img = Image.fromarray(dpt_norm)
+            depth_img.save(os.path.join(save_dir, f"depth_{i}.png"))
+
+        if visualize:
+            plt.imshow(dpt_np, cmap='plasma')
+            plt.title(f"Depth Map {i}")
+            plt.colorbar()
+            plt.show()
 
 def extract_frames(video_path, frames_path):
     print(f"Extracting frames from {video_path}")
@@ -103,7 +143,9 @@ def extract_renders(results_folder):
 
 
 def separate_cameras(results_folder, cameras_folder):
-    frame_types = [DIFFUSION_FRAMES, RENDER_FRAMES]
+    #frame_types = [DIFFUSION_FRAMES, RENDER_FRAMES]
+    frame_types = [RENDER_FRAMES]
+
     for frame_number in os.listdir(results_folder):
         if not os.path.isdir(os.path.join(results_folder, frame_number)):
             continue

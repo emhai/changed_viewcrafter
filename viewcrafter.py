@@ -1,4 +1,7 @@
 import sys
+
+from configs.master_config import DEPTHS_DIR, PREDICTED_CAMERA_POSES_FILE, PREDICTED_FOCALS_FILE
+
 sys.path.append('./extern/dust3r')
 from dust3r.inference import inference, load_model
 from dust3r.utils.image import load_images
@@ -74,9 +77,32 @@ class ViewCrafter:
         output = inference(pairs, self.dust3r, self.device, batch_size=self.opts.batch_size)
 
         mode = GlobalAlignerMode.PointCloudOptimizer #if len(self.images) > 2 else GlobalAlignerMode.PairViewer
+
         scene = global_aligner(output, device=self.device, mode=mode)
+
+        poses_file_path = os.path.join(os.path.dirname(self.opts.save_dir), PREDICTED_CAMERA_POSES_FILE)
+        focals_file_path = os.path.join(os.path.dirname(self.opts.save_dir), PREDICTED_FOCALS_FILE)
+        already_predicted = os.path.exists(poses_file_path)
+        init_string = "mst"
+
+        if already_predicted:
+            print("Found predicted camera poses")
+            predicted_poses = torch.load(poses_file_path) # shape: (n, 4, 4)
+            predicted_focals = torch.load(focals_file_path)
+            scene.preset_pose(predicted_poses)
+            scene.preset_focal(predicted_focals)
+            init_string = "known_poses"
+
         if mode == GlobalAlignerMode.PointCloudOptimizer:
-            loss = scene.compute_global_alignment(init='mst', niter=self.opts.niter, schedule=self.opts.schedule, lr=self.opts.lr)
+            loss = scene.compute_global_alignment(init=init_string, niter=self.opts.niter, schedule=self.opts.schedule,
+                                                  lr=self.opts.lr)
+
+        if not already_predicted:
+            print("Saving predicted camera poses")
+            pred_poses = scene.get_im_poses().detach().cpu()
+            torch.save(pred_poses, poses_file_path)
+            pred_focals = scene.get_focals().detach().cpu()
+            torch.save(pred_focals, focals_file_path)
 
         if clean_pc:
             self.scene = scene.clean_pointcloud()
@@ -214,10 +240,20 @@ class ViewCrafter:
         else:
             ## masks for cleaner point cloud
             self.scene.min_conf_thr = float(self.scene.conf_trf(torch.tensor(self.opts.min_conf_thr)))
-            masks = self.scene.get_masks()
+
             depth = self.scene.get_depthmaps()
+            save_depth(depth, os.path.join(self.opts.save_dir, DEPTHS_DIR), False, True)
+
+            masks = self.scene.get_masks()
+            save_masks(masks, os.path.join(self.opts.save_dir, MASKS_DIR, "before"), False, True)
+
+            # background suppression masks
             bgs_mask = [dpt > self.opts.bg_trd*(torch.max(dpt[40:-40,:])+torch.min(dpt[40:-40,:])) for dpt in depth]
-            masks_new = [m+mb for m, mb in zip(masks,bgs_mask)] 
+            save_masks(bgs_mask, os.path.join(self.opts.save_dir, MASKS_DIR, "bgs"), False, True)
+
+            masks_new = [m+mb for m, mb in zip(masks,bgs_mask)]
+            save_masks(masks_new, os.path.join(self.opts.save_dir, MASKS_DIR, "new"), False, True)
+
             masks = to_numpy(masks_new)
             mask_pc = True
 
@@ -233,13 +269,13 @@ class ViewCrafter:
         save_pointcloud_with_normals(imgs, pcd, msk=masks, save_path=os.path.join(self.opts.save_dir, f'pcd.ply') , mask_pc=mask_pc, reduce_pc=False)
 
         diffusion_results = []
-        print(f'Generating {len(self.img_ori)-1} clips\n')
-        for i in range(len(self.img_ori)-1 ):
-            print(f'Generating clip {i} ...\n')
-            diffusion_results.append(self.run_diffusion(render_results[i*(self.opts.video_length - 1):self.opts.video_length+i*(self.opts.video_length - 1)]))
-        print(f'Finish!\n')
-        diffusion_results = torch.cat(diffusion_results)
-        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
+        # print(f'Generating {len(self.img_ori)-1} clips\n')
+        # for i in range(len(self.img_ori)-1 ):
+        #     print(f'Generating clip {i} ...\n')
+        #     diffusion_results.append(self.run_diffusion(render_results[i*(self.opts.video_length - 1):self.opts.video_length+i*(self.opts.video_length - 1)]))
+        # print(f'Finish!\n')
+        # diffusion_results = torch.cat(diffusion_results)
+        # save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
         # torch.Size([25, 576, 1024, 3])
         return diffusion_results
     """
