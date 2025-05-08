@@ -144,8 +144,8 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
         img_cat_cond = z
         cond["c_concat"] = [img_cat_cond] # b c 1 h w
     
-    if unconditional_guidance_scale != 1.0:
-        if model.uncond_type == "empty_seq":
+    if unconditional_guidance_scale != 1.0: # default 7.5
+        if model.uncond_type == "empty_seq": # default!
             prompts = batch_size * [""]
             uc_emb = model.get_learned_conditioning(prompts)
         elif model.uncond_type == "zero_embed":

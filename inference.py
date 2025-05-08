@@ -1,3 +1,5 @@
+from operator import truediv
+
 from viewcrafter import ViewCrafter
 import os
 from configs.infer_config import get_parser
@@ -14,6 +16,7 @@ if __name__=="__main__":
     opts.save_dir = os.path.join(opts.out_dir,opts.exp_name)
     os.makedirs(opts.save_dir,exist_ok=True)
     pvd = ViewCrafter(opts)
+    master_test = True
 
 
     if opts.mode == 'single_view_target':
@@ -26,8 +29,9 @@ if __name__=="__main__":
         pvd.nvs_single_view_eval()
 
     elif opts.mode == 'sparse_view_interp':
-        if not opts.master:
+        if not master_test:
             pvd.nvs_sparse_view_interp()
-
+        else:
+            print("activated MASTER, did you want this?")
     else:
         raise KeyError(f"Invalid Mode: {opts.mode}")

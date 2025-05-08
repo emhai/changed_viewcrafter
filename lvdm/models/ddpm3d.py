@@ -1033,7 +1033,7 @@ class LatentVisualDiffusion(LatentDiffusion):
         self.image_proj_model_trainable = image_proj_model_trainable
         self._init_embedder(img_cond_stage_config, freeze_embedder)
         self._init_img_ctx_projector(image_proj_stage_config, image_proj_model_trainable)
-        self.fix_temporal = fix_temporal
+        self.fix_temporal = fix_temporal # not in dynamicrafter, only here
 
     def _init_img_ctx_projector(self, config, trainable):
         self.image_proj_model = instantiate_from_config(config)
@@ -1095,6 +1095,23 @@ class LatentVisualDiffusion(LatentDiffusion):
         img_emb = self.image_proj_model(img_emb)
 
         if self.model.conditioning_key == 'hybrid':
+
+
+            # DIFF TO DYNAMICRAFTER FROM HERE ----
+            # missing
+            #if self.interp_mode:
+
+            #    ## starting frame + (L-2 empty frames) + ending frame
+
+            #    img_cat_cond = torch.zeros_like(z)
+
+            #    img_cat_cond[:,:,0,:,:] = z[:,:,0,:,:]
+
+            #    img_cat_cond[:,:,-1,:,:] = z[:,:,-1,:,:]
+
+            # else:
+
+            # ----- TO HERE
             ## simply repeat the cond_frame to match the seq_len of z
             img_cat_cond = z[:,:,cond_frame_index,:,:]
             img_cat_cond = img_cat_cond.unsqueeze(2)
@@ -1199,6 +1216,10 @@ class LatentVisualDiffusion(LatentDiffusion):
         """ configure_optimizers for LatentDiffusion """
         lr = self.learning_rate
 
+
+        # DIFF TO DYNAMICRAFTER FROM HERE ----
+
+
         # params = list(self.model.parameters())
         # mainlogger.info(f"@Training [{len(params)}] Full Paramters.")
 
@@ -1219,6 +1240,10 @@ class LatentVisualDiffusion(LatentDiffusion):
         else:
             params = list(self.model.parameters())
             mainlogger.info(f"@Training [{len(params)}] Full Paramters.")
+
+
+        # ----- TO HERE
+
 
         if self.cond_stage_trainable:
             params_cond_stage = [p for p in self.cond_stage_model.parameters() if p.requires_grad == True]
@@ -1247,6 +1272,7 @@ class LatentVisualDiffusion(LatentDiffusion):
         
         return optimizer
 
+# inherits from latentVisualDiffusion - differences to dynamicrafter marked
 class VIPLatentDiffusion(LatentVisualDiffusion):
     def get_batch_input(self, batch, random_uncond, return_first_stage_outputs=False, return_original_cond=False, return_fs=False, return_cond_frame=False, return_cond_frames=False,**kwargs):
         ## x: b c t h w

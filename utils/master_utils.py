@@ -4,12 +4,15 @@ import subprocess
 
 import cv2
 
+from configs.master_config import OUTPUT_LOG_FILE, CAMERA_FRAMES_DIR, INPUTS_DIR, RESULTS_DIR, SEPERATED_CAMERAS_DIR, \
+    ORIGINAL_VIDEOS_DIR, DIFFUSION_FRAMES, RENDER_FRAMES
+
 
 def extract_frames(video_path, frames_path):
     print(f"Extracting frames from {video_path}")
 
     outer_path = video_path.split("/")[0: -2]
-    stdout_path = os.path.join("/", *outer_path, "output.log")
+    stdout_path = os.path.join("/", *outer_path, OUTPUT_LOG_FILE)
 
     ffmpeg_command = ['ffmpeg', '-i', os.path.join(video_path, video_path), f"{frames_path}/%05d.png"]
     with open(stdout_path, "a") as f:
@@ -22,16 +25,16 @@ def create_folder_structure(folders):
             print('Created folder:', folder)
 
 def setup_structure(save_path, source_path):
-    frames_path = os.path.join(save_path, "camera_frames")
-    all_frames_path = os.path.join(save_path, "inputs")
-    results_path = os.path.join(save_path, "results")
-    cameras_path = os.path.join(save_path, "cameras")
+    frames_path = os.path.join(save_path, CAMERA_FRAMES_DIR)
+    all_frames_path = os.path.join(save_path, INPUTS_DIR)
+    results_path = os.path.join(save_path, RESULTS_DIR)
+    cameras_path = os.path.join(save_path, SEPERATED_CAMERAS_DIR)
 
     all_folders = [frames_path, all_frames_path, results_path, cameras_path]
     create_folder_structure(all_folders)
 
     # copy video folder
-    video_path = os.path.join(save_path, "videos")
+    video_path = os.path.join(save_path, ORIGINAL_VIDEOS_DIR)
     video_num = len(os.listdir(source_path))
     shutil.copytree(source_path, video_path)
     print(f"Copying {video_num} videos from {source_path} to {video_path}")
@@ -100,7 +103,7 @@ def extract_renders(results_folder):
 
 
 def separate_cameras(results_folder, cameras_folder):
-    frame_types = ["diffusion_frames", "render_frames"]
+    frame_types = [DIFFUSION_FRAMES, RENDER_FRAMES]
     for frame_number in os.listdir(results_folder):
         if not os.path.isdir(os.path.join(results_folder, frame_number)):
             continue
