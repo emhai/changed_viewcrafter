@@ -30,6 +30,8 @@ from pytorch_lightning import seed_everything
 from utils.diffusion_utils import instantiate_from_config,load_model_checkpoint,image_guided_synthesis
 from pathlib import Path
 from torchvision.utils import save_image
+import time
+
 
 class ViewCrafter:
     def __init__(self, opts, gradio = False):
@@ -50,19 +52,30 @@ class ViewCrafter:
                     print("Videos in folder")
                     setup_structure(self.opts.save_dir, self.opts.image_dir)
                     original_save_dir = self.opts.save_dir
+                    input_dir = os.path.join(original_save_dir, INPUTS_DIR)
+                    results_dir = os.path.join(original_save_dir, RESULTS_DIR)
+                    all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
 
-                    for frame in os.listdir(os.path.join(self.opts.save_dir, INPUTS_DIR)):
-                        self.opts.image_dir = os.path.join(self.opts.save_dir, INPUTS_DIR, frame)
-                        self.opts.save_dir = os.path.join(self.opts.save_dir, RESULTS_DIR, frame)
+                    for frame in all_frames:
+                        print("running frame", frame, "/", len(all_frames))
+                        start = time.time()
+
+                        self.opts.image_dir = os.path.join(input_dir, frame)
+                        self.opts.save_dir = os.path.join(results_dir, frame)
+
                         os.mkdir(self.opts.save_dir)
                         self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
                         self.run_dust3r(input_images=self.images, clean_pc=True)
                         self.nvs_sparse_view_interp()
 
                         self.opts.save_dir = original_save_dir
+                        end = time.time()
+                        time_per_frame = (end - start) / 60
+                        print("elapsed time in min: ", time_per_frame)
+                        remaining_time = time_per_frame * (len(all_frames) - int(frame))
+                        print("estimated remaining time in min: ", remaining_time, "  in hours: ", remaining_time / 60)
 
                     separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR), os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
-
 
 
                 # images as input
@@ -156,70 +169,6 @@ class ViewCrafter:
 
         return torch.clamp(batch_samples[0][0].permute(1,2,3,0), -1., 1.) 
 
-    def nvs_single_view(self, gradio=False):
-        # 最后一个view为 0 pose
-        c2ws = self.scene.get_im_poses().detach()[1:] 
-        principal_points = self.scene.get_principal_points().detach()[1:] #cx cy
-        focals = self.scene.get_focals().detach()[1:] 
-        shape = self.images[0]['true_shape']
-        H, W = int(shape[0][0]), int(shape[0][1])
-        pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)] # a list of points of size whc
-        depth = [i.detach() for i in self.scene.get_depthmaps()]
-        depth_avg = depth[-1][H//2,W//2] #以图像中心处的depth(z)为球心旋转
-        radius = depth_avg*self.opts.center_scale #缩放调整
-
-        ## change coordinate
-        c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius, elevation=self.opts.elevation, device=self.device)
-
-        imgs = np.array(self.scene.imgs)
-        
-        masks = None
-
-        if self.opts.mode == 'single_view_nbv':
-            ## 输入candidate->渲染mask->最大mask对应的pose作为nbv
-            ## nbv模式下self.opts.d_theta[0], self.opts.d_phi[0]代表search space中的网格theta, phi之间的间距; self.opts.d_phi[0]的符号代表方向,分为左右两个方向
-            ## FIXME hard coded candidate view数量, 以left为例,第一次迭代从[左,左上]中选取, 从第二次开始可以从[左,左上,左下]中选取
-            num_candidates = 2
-            candidate_poses,thetas,phis = generate_candidate_poses(c2ws, H, W, focals, principal_points, self.opts.d_theta[0], self.opts.d_phi[0],num_candidates, self.device)
-            _, viewmask = self.run_render([pcd[-1]], [imgs[-1]],masks, H, W, candidate_poses,num_candidates)
-            nbv_id = torch.argmin(viewmask.sum(dim=[1,2,3])).item()
-            save_image( viewmask.permute(0,3,1,2), os.path.join(self.opts.save_dir,f"candidate_mask0_nbv{nbv_id}.png"), normalize=True, value_range=(0, 1))
-            theta_nbv = thetas[nbv_id]
-            phi_nbv = phis[nbv_id]
-            # generate camera trajectory from T_curr to T_nbv
-            camera_traj,num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, theta_nbv, phi_nbv, self.opts.d_r[0],self.opts.video_length, self.device)
-            # 重置elevation
-            self.opts.elevation -= theta_nbv
-        elif self.opts.mode == 'single_view_target':
-            camera_traj,num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, self.opts.d_theta[0], self.opts.d_phi[0], self.opts.d_r[0],self.opts.d_x[0]*depth_avg/focals.item(),self.opts.d_y[0]*depth_avg/focals.item(),self.opts.video_length, self.device)
-        elif self.opts.mode == 'single_view_txt':
-            if not gradio:
-                with open(self.opts.traj_txt, 'r') as file:
-                    lines = file.readlines()
-                    phi = [float(i) for i in lines[0].split()]
-                    theta = [float(i) for i in lines[1].split()]
-                    r = [float(i) for i in lines[2].split()]
-            else: 
-                phi, theta, r = self.gradio_traj
-            camera_traj,num_views = generate_traj_txt(c2ws, H, W, focals, principal_points, phi, theta, r,self.opts.video_length, self.device,viz_traj=True, save_dir = self.opts.save_dir)
-        else:
-            raise KeyError(f"Invalid Mode: {self.opts.mode}")
-
-        render_results, viewmask = self.run_render([pcd[-1]], [imgs[-1]],masks, H, W, camera_traj,num_views)
-        render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
-        render_results[0] = self.img_ori
-        if self.opts.mode == 'single_view_txt':
-            if phi[-1]==0. and theta[-1]==0. and r[-1]==0.:
-                render_results[-1] = self.img_ori
-                
-        save_video(render_results, os.path.join(self.opts.save_dir, 'render0.mp4'))
-        save_pointcloud_with_normals([imgs[-1]], [pcd[-1]], msk=None, save_path=os.path.join(self.opts.save_dir,'pcd0.ply') , mask_pc=False, reduce_pc=False)
-        diffusion_results = self.run_diffusion(render_results)
-        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, 'diffusion0.mp4'))
-
-        return diffusion_results
-
-
     """
     ####################################################################################################################
     """
@@ -260,7 +209,7 @@ class ViewCrafter:
         imgs = np.array(self.scene.imgs)
 
         camera_traj,num_views = generate_traj_interp(c2ws, H, W, focals, principal_points, self.opts.video_length, self.device)
-        render_results, viewmask = self.run_render(pcd, imgs,masks, H, W, camera_traj, num_views)
+        render_results, viewmask = self.run_render(pcd, imgs, masks, H, W, camera_traj, num_views)
         render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
         
         for i in range(len(self.img_ori)):
@@ -269,14 +218,14 @@ class ViewCrafter:
         save_pointcloud_with_normals(imgs, pcd, msk=masks, save_path=os.path.join(self.opts.save_dir, f'pcd.ply') , mask_pc=mask_pc, reduce_pc=False)
 
         diffusion_results = []
-        # print(f'Generating {len(self.img_ori)-1} clips\n')
-        # for i in range(len(self.img_ori)-1 ):
-        #     print(f'Generating clip {i} ...\n')
-        #     diffusion_results.append(self.run_diffusion(render_results[i*(self.opts.video_length - 1):self.opts.video_length+i*(self.opts.video_length - 1)]))
-        # print(f'Finish!\n')
-        # diffusion_results = torch.cat(diffusion_results)
-        # save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
-        # torch.Size([25, 576, 1024, 3])
+        print(f'Generating {len(self.img_ori)-1} clips\n')
+        for i in range(len(self.img_ori)-1 ):
+            print(f'Generating clip {i} ...\n')
+            diffusion_results.append(self.run_diffusion(render_results[i*(self.opts.video_length - 1):self.opts.video_length+i*(self.opts.video_length - 1)]))
+        print(f'Finish!\n')
+        diffusion_results = torch.cat(diffusion_results)
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
+        torch.Size([25, 576, 1024, 3])
         return diffusion_results
     """
     ####################################################################################################################
@@ -392,3 +341,82 @@ class ViewCrafter:
         gen_dir = os.path.join(self.opts.save_dir, "diffusion0.mp4")
         
         return traj_dir, gen_dir
+
+    def nvs_single_view(self, gradio=False):
+        # 最后一个view为 0 pose
+        c2ws = self.scene.get_im_poses().detach()[1:]
+        principal_points = self.scene.get_principal_points().detach()[1:]  # cx cy
+        focals = self.scene.get_focals().detach()[1:]
+        shape = self.images[0]['true_shape']
+        H, W = int(shape[0][0]), int(shape[0][1])
+        pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]  # a list of points of size whc
+        depth = [i.detach() for i in self.scene.get_depthmaps()]
+        depth_avg = depth[-1][H // 2, W // 2]  # 以图像中心处的depth(z)为球心旋转
+        radius = depth_avg * self.opts.center_scale  # 缩放调整
+
+        ## change coordinate
+        c2ws, pcd = world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius,
+                                       elevation=self.opts.elevation, device=self.device)
+
+        imgs = np.array(self.scene.imgs)
+
+        masks = None
+
+        if self.opts.mode == 'single_view_nbv':
+            ## 输入candidate->渲染mask->最大mask对应的pose作为nbv
+            ## nbv模式下self.opts.d_theta[0], self.opts.d_phi[0]代表search space中的网格theta, phi之间的间距; self.opts.d_phi[0]的符号代表方向,分为左右两个方向
+            ## FIXME hard coded candidate view数量, 以left为例,第一次迭代从[左,左上]中选取, 从第二次开始可以从[左,左上,左下]中选取
+            num_candidates = 2
+            candidate_poses, thetas, phis = generate_candidate_poses(c2ws, H, W, focals, principal_points,
+                                                                     self.opts.d_theta[0], self.opts.d_phi[0],
+                                                                     num_candidates, self.device)
+            _, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, candidate_poses, num_candidates)
+            nbv_id = torch.argmin(viewmask.sum(dim=[1, 2, 3])).item()
+            save_image(viewmask.permute(0, 3, 1, 2),
+                       os.path.join(self.opts.save_dir, f"candidate_mask0_nbv{nbv_id}.png"), normalize=True,
+                       value_range=(0, 1))
+            theta_nbv = thetas[nbv_id]
+            phi_nbv = phis[nbv_id]
+            # generate camera trajectory from T_curr to T_nbv
+            camera_traj, num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, theta_nbv, phi_nbv,
+                                                             self.opts.d_r[0], self.opts.video_length, self.device)
+            # 重置elevation
+            self.opts.elevation -= theta_nbv
+        elif self.opts.mode == 'single_view_target':
+            camera_traj, num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, self.opts.d_theta[0],
+                                                             self.opts.d_phi[0], self.opts.d_r[0],
+                                                             self.opts.d_x[0] * depth_avg / focals.item(),
+                                                             self.opts.d_y[0] * depth_avg / focals.item(),
+                                                             self.opts.video_length, self.device)
+        elif self.opts.mode == 'single_view_txt':
+            if not gradio:
+                with open(self.opts.traj_txt, 'r') as file:
+                    lines = file.readlines()
+                    phi = [float(i) for i in lines[0].split()]
+                    theta = [float(i) for i in lines[1].split()]
+                    r = [float(i) for i in lines[2].split()]
+            else:
+                phi, theta, r = self.gradio_traj
+            camera_traj, num_views = generate_traj_txt(c2ws, H, W, focals, principal_points, phi, theta, r,
+                                                       self.opts.video_length, self.device, viz_traj=True,
+                                                       save_dir=self.opts.save_dir)
+        else:
+            raise KeyError(f"Invalid Mode: {self.opts.mode}")
+
+        render_results, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, camera_traj, num_views)
+        render_results = F.interpolate(render_results.permute(0, 3, 1, 2), size=(576, 1024), mode='bilinear',
+                                       align_corners=False).permute(0, 2, 3, 1)
+        render_results[0] = self.img_ori
+        if self.opts.mode == 'single_view_txt':
+            if phi[-1] == 0. and theta[-1] == 0. and r[-1] == 0.:
+                render_results[-1] = self.img_ori
+
+        save_video(render_results, os.path.join(self.opts.save_dir, 'render0.mp4'))
+        save_pointcloud_with_normals([imgs[-1]], [pcd[-1]], msk=None,
+                                     save_path=os.path.join(self.opts.save_dir, 'pcd0.ply'), mask_pc=False,
+                                     reduce_pc=False)
+        diffusion_results = self.run_diffusion(render_results)
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, 'diffusion0.mp4'))
+
+        return diffusion_results
+

@@ -16,7 +16,7 @@ if __name__=="__main__":
     opts.save_dir = os.path.join(opts.out_dir,opts.exp_name)
     os.makedirs(opts.save_dir,exist_ok=True)
     pvd = ViewCrafter(opts)
-    master_test = True
+    master_test = False
 
 
     if opts.mode == 'single_view_target':

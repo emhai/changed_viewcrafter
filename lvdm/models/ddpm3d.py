@@ -730,7 +730,7 @@ class LatentDiffusion(DDPM):
             key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
             cond = {key: cond}
 
-        x_recon = self.model(x_noisy, t, **cond, **kwargs)
+        x_recon = self.model(x_noisy, t, **cond, **kwargs) # calls DiffusionWrapper.forward line 1452
 
         if isinstance(x_recon, tuple):
             return x_recon[0]
@@ -1460,7 +1460,7 @@ class DiffusionWrapper(pl.LightningModule):
         elif self.conditioning_key == 'crossattn':
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(x, t, context=cc, **kwargs)
-        elif self.conditioning_key == 'hybrid':
+        elif self.conditioning_key == 'hybrid': # VIEWCRAFTER
             # import pdb 
             # pdb.set_trace()
             ## it is just right [b,c,t,h,w]: concatenate in channel dim
