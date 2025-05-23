@@ -15,8 +15,7 @@ if __name__=="__main__":
         opts.exp_name = f'{prefix}_{os.path.splitext(os.path.basename(opts.image_dir))[0]}'
     opts.save_dir = os.path.join(opts.out_dir,opts.exp_name)
     os.makedirs(opts.save_dir,exist_ok=True)
-    pvd = ViewCrafter(opts)
-    master_test = False
+    pvd = ViewCrafter(opts) # multi-video handled in constructor
 
 
     if opts.mode == 'single_view_target':
@@ -29,9 +28,10 @@ if __name__=="__main__":
         pvd.nvs_single_view_eval()
 
     elif opts.mode == 'sparse_view_interp':
-        if not master_test:
-            pvd.nvs_sparse_view_interp()
-        else:
-            print("activated MASTER, did you want this?")
+        pvd.nvs_sparse_view_interp()
+
+    elif opts.mode == 'multi_video_interp':
+        print("Finished Multi Video Interpolation")
+
     else:
         raise KeyError(f"Invalid Mode: {opts.mode}")

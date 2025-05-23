@@ -45,19 +45,18 @@ class ViewCrafter:
                 self.images, self.img_ori = self.load_initial_images(image_dir=self.opts.image_dir)
                 self.run_dust3r(input_images=self.images)
             elif os.path.isdir(self.opts.image_dir):
-                first_file = os.listdir(self.opts.image_dir)[0]
 
-                # videos as input
-                if first_file.endswith(".mp4"):
-                    print("Videos in folder")
+                if self.opts.mode == 'multi_video_interp': # videos as input
+
                     setup_structure(self.opts.save_dir, self.opts.image_dir)
                     original_save_dir = self.opts.save_dir
                     input_dir = os.path.join(original_save_dir, INPUTS_DIR)
                     results_dir = os.path.join(original_save_dir, RESULTS_DIR)
                     all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
-
+                    # all_frames = all_frames[34:] # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
+                    print(all_frames)
                     for frame in all_frames:
-                        print("running frame", frame, "/", len(all_frames))
+                        print("running frame", int(frame) + 1, "/", len(all_frames))
                         start = time.time()
 
                         self.opts.image_dir = os.path.join(input_dir, frame)
@@ -71,17 +70,17 @@ class ViewCrafter:
                         self.opts.save_dir = original_save_dir
                         end = time.time()
                         time_per_frame = (end - start) / 60
-                        print("elapsed time in min: ", time_per_frame)
+                        print("elapsed time: {:.2f}min".format(time_per_frame))
                         remaining_time = time_per_frame * (len(all_frames) - int(frame))
-                        print("estimated remaining time in min: ", remaining_time, "  in hours: ", remaining_time / 60)
+                        print("estimated remaining time: {:.2f}min, {:.2f}h\n".format(remaining_time, remaining_time / 60))
 
                     separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR), os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
-
 
                 # images as input
                 else:
                     self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
                     self.run_dust3r(input_images=self.images, clean_pc = True)
+                    self.nvs_sparse_view_interp()
             else:
                 print(f"{self.opts.image_dir} doesn't exist")           
         

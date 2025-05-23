@@ -12,7 +12,7 @@ def get_parser():
 
 
     ## renderer
-    parser.add_argument('--mode',  type=str,  default='single_view_txt', help="Currently we support 'single_view_txt' and 'single_view_target'")
+    parser.add_argument('--mode',  type=str,  default='single_view_txt', help="Currently we support 'single_view_txt', 'single_view_target' and 'multi_video_interp'")
     parser.add_argument('--traj_txt',  type=str, help="Required for 'single_view_txt' mode, a txt file that specify camera trajectory")
     parser.add_argument('--elevation',  type=float, default=5., help='The elevation angle of the input image in degree. Estimate a rough value based on your visual judgment' )
     parser.add_argument('--center_scale',  type=float, default=1., help='Range: (0, 2]. Scale factor for the spherical radius (r). By default, r is set to the depth value of the center pixel (H//2, W//2) of the reference image')

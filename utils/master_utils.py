@@ -129,22 +129,9 @@ def create_video(input_folder):
     video.release()
     cv2.destroyAllWindows()
 
-def extract_renders(results_folder):
-    # extract frames
-    for folder in os.listdir(results_folder):
-        if not os.path.isdir(os.path.join(results_folder, folder)):
-            continue
-
-
-        video_path = os.path.join(results_folder, folder, "render.mp4")
-        new_path = os.path.join(results_folder, folder, "render_frames")
-        os.makedirs(new_path)
-        extract_frames(video_path, new_path)
-
 
 def separate_cameras(results_folder, cameras_folder):
-    #frame_types = [DIFFUSION_FRAMES, RENDER_FRAMES]
-    frame_types = [RENDER_FRAMES]
+    frame_types = [DIFFUSION_FRAMES, RENDER_FRAMES]
 
     for frame_number in os.listdir(results_folder):
         if not os.path.isdir(os.path.join(results_folder, frame_number)):
@@ -156,22 +143,24 @@ def separate_cameras(results_folder, cameras_folder):
             for camera in os.listdir(frame_folder):
                 file_name = os.path.join(frame_folder, camera)
                 name, ext = os.path.splitext(camera)
+                name = name.split("_")[1]
 
-                name_folder = os.path.join(cameras_folder, frame_type, f"{name}")
-                print(name_folder, "--", file_name)
+                name_folder = os.path.join(cameras_folder, frame_type, f"camera_{name}")
+                #print(name_folder, "--", file_name)
                 if not os.path.exists(name_folder):
                     os.makedirs(name_folder)
 
                 shutil.copyfile(file_name, f"{name_folder}/{frame_number}.png")
 
+    print("Creating Videos")
     for frame_type in frame_types:
         camera_files = [f for f in os.listdir(os.path.join(cameras_folder, frame_type))]
         for file in camera_files:
             create_video(os.path.join(cameras_folder, frame_type, file))
-#
+
 # def main():
-#     results_folder = "/media/emmahaidacher/Volume/RESULTS/espresso_renders/results"
-#     cameras_folder = "/media/emmahaidacher/Volume/RESULTS/espresso_renders/cameras"
+#     results_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/results"
+#     cameras_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/cameras"
 #     separate_cameras(results_folder, cameras_folder)
 #
 # if __name__ == "__main__":
