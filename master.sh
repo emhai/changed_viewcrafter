@@ -1,6 +1,6 @@
 python inference.py \
 --image_dir /media/emmahaidacher/Volume/DATASETS/INTERNET/espresso_short/2_videos_short \
---out_dir /home/emmahaidacher/Masterthesis/MasterThesis/debug_test \
+--out_dir /home/emmahaidacher/Masterthesis/MasterThesis/good_results/ \
 --mode 'multi_video_interp' \
 --bg_trd 0.2 \
 --seed 123 \
@@ -11,4 +11,4 @@ python inference.py \
 --device 'cuda:0' \
 --height 576 --width 1024 \
 --model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \
---exp_name 'espresso_fixed_pose_2_cams'
+--exp_name 'espresso_fixedpose_2cams_60frames_prompt'

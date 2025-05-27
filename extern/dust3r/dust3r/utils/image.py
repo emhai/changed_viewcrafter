@@ -90,7 +90,7 @@ def load_images(folder_or_list, size, square_ok=False,force_1024 = False):
     """
     if isinstance(folder_or_list, str):
         print(f'>> Loading images from {folder_or_list}')
-        root, folder_content = folder_or_list, sorted(os.listdir(folder_or_list))
+        root, folder_content = folder_or_list, sorted(os.listdir(folder_or_list), key=lambda x: int(x.split('/')[-1].split('.')[0]))
 
     elif isinstance(folder_or_list, list):
         print(f'>> Loading a list of {len(folder_or_list)} images')

@@ -144,7 +144,9 @@ class DDIMSampler(object):
         device = self.model.betas.device        
         b = shape[0]
         if x_T is None:
+            # torch.manual_seed(42)
             img = torch.randn(shape, device=device)
+            print(img)
         else:
             img = x_T
         if precision is not None:

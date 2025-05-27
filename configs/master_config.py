@@ -14,3 +14,6 @@ MASKS_DIR = "masks"                     # masks folder
 
 PREDICTED_CAMERA_POSES_FILE = "test_camera_poses.pt"
 PREDICTED_FOCALS_FILE = "test_focals_poses.pt"
+
+GUIDANCE_DIR = "guidance"
+GUIDANCE_IMAGE = "guidance.png"

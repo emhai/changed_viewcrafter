@@ -48,7 +48,7 @@ class ViewCrafter:
 
                 if self.opts.mode == 'multi_video_interp': # videos as input
 
-                    setup_structure(self.opts.save_dir, self.opts.image_dir)
+                    self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
                     original_save_dir = self.opts.save_dir
                     input_dir = os.path.join(original_save_dir, INPUTS_DIR)
                     results_dir = os.path.join(original_save_dir, RESULTS_DIR)
@@ -76,6 +76,8 @@ class ViewCrafter:
 
                     separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR), os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
 
+                elif self.opts.mode == 'only_diffusion':
+                    return
                 # images as input
                 else:
                     self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
@@ -158,10 +160,25 @@ class ViewCrafter:
         prompts = [self.opts.prompt]
         videos = (renderings * 2. - 1.).permute(3,0,1,2).unsqueeze(0).to(self.device)
         condition_index = [0]
+
+        # guidance_folder = os.path.join(self.outer_folder, GUIDANCE_DIR)
+        # images = load_images(guidance_folder, size=512, force_1024=True)
+        # all_images = []
+        # for image in images:
+        #     asdf = (image['img_ori'].squeeze(0).permute(1, 2, 0) + 1.) / 2.
+        #     all_images.append(asdf)
+
         with torch.no_grad(), torch.cuda.amp.autocast():
             # [1,1,c,t,h,w]
             batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape, self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta, \
                                self.opts.unconditional_guidance_scale, self.opts.cfg_img, self.opts.frame_stride, self.opts.text_input, self.opts.multiple_cond_cfg, self.opts.timestep_spacing, self.opts.guidance_rescale, condition_index)
+
+            # batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape,
+            #                                        self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta,
+            #                                        self.opts.unconditional_guidance_scale, self.opts.cfg_img,
+            #                                        self.opts.frame_stride, self.opts.text_input,
+            #                                        self.opts.multiple_cond_cfg, self.opts.timestep_spacing,
+            #                                        self.opts.guidance_rescale, None, guidance_image)
 
             # save_results_seperate(batch_samples[0], self.opts.save_dir, fps=8)
             # torch.Size([1, 3, 25, 576, 1024]) [-1,1]
@@ -230,6 +247,26 @@ class ViewCrafter:
     ####################################################################################################################
     """
 
+    def only_diffusion(self):
+
+        render_path = "/home/emmahaidacher/Masterthesis/MasterThesis/real_noisy_esp/"
+        images = load_images(render_path, size=512, force_1024=True)
+        all_images = []
+        for image in images:
+            asdf = (image['img_ori'].squeeze(0).permute(1, 2, 0) + 1.) / 2.
+            all_images.append(asdf)
+        render_results = torch.stack(all_images)
+        save_video(render_results, os.path.join(self.opts.save_dir, f'render.mp4'), os.path.join(self.opts.save_dir, RENDER_FRAMES))
+
+
+        diffusion_results = []
+        video_length = 16
+        diffusion_results.append(self.run_diffusion(render_results[0:video_length]))
+        print(f'Finish!\n')
+        diffusion_results = torch.cat(diffusion_results)
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
+        torch.Size([25, 576, 1024, 3])
+        return diffusion_results
 
     def nvs_single_view_eval(self):
 

@@ -9,6 +9,8 @@ from lvdm.models.samplers.ddim import DDIMSampler
 from lvdm.models.samplers.ddim_multiplecond import DDIMSampler as DDIMSampler_multicond
 from einops import rearrange, repeat
 
+
+
 # This is https://github.com/Doubiiu/DynamiCrafter/blob/main/utils/utils.py DynamiCrafter utils
 
 def count_params(model, verbose=False):
@@ -119,7 +121,7 @@ def get_latent_z(model, videos):
     return z
 
 def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddim_steps=50, ddim_eta=1., \
-                        unconditional_guidance_scale=1.0, cfg_img=None, fs=None, text_input=False, multiple_cond_cfg=False, timestep_spacing='uniform', guidance_rescale=0.0, condition_index=None, **kwargs):
+                        unconditional_guidance_scale=1.0, cfg_img=None, fs=None, text_input=False, multiple_cond_cfg=False, timestep_spacing='uniform', guidance_rescale=0.0, condition_index=None, guidance_image=None, **kwargs):
     ddim_sampler = DDIMSampler(model) if not multiple_cond_cfg else DDIMSampler_multicond(model)
     batch_size = noise_shape[0]
     fs = torch.tensor([fs] * batch_size, dtype=torch.long, device=model.device)
@@ -128,7 +130,11 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
         prompts = [""]*batch_size
     assert condition_index is not None, "Error: condition index is None!"
 
-    img = videos[:,:,condition_index[0]] #bchw
+    if condition_index is None:
+        img = guidance_image.to(model.device)
+        print(f"shape: {img.shape}")
+    else:
+        img = videos[:, :, condition_index[0]]  # bchw
     img_emb = model.embedder(img) ## blc
     img_emb = model.image_proj_model(img_emb)
 

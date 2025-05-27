@@ -33,5 +33,8 @@ if __name__=="__main__":
     elif opts.mode == 'multi_video_interp':
         print("Finished Multi Video Interpolation")
 
+    elif opts.mode == 'only_diffusion':
+        pvd.only_diffusion()
+
     else:
         raise KeyError(f"Invalid Mode: {opts.mode}")

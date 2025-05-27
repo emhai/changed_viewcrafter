@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 
 from configs.master_config import OUTPUT_LOG_FILE, CAMERA_FRAMES_DIR, INPUTS_DIR, RESULTS_DIR, SEPERATED_CAMERAS_DIR, \
-    ORIGINAL_VIDEOS_DIR, DIFFUSION_FRAMES, RENDER_FRAMES, MASKS_DIR
+    ORIGINAL_VIDEOS_DIR, DIFFUSION_FRAMES, RENDER_FRAMES, MASKS_DIR, GUIDANCE_IMAGE, GUIDANCE_DIR
 
 import matplotlib.pyplot as plt
 
@@ -103,6 +103,14 @@ def setup_structure(save_path, source_path):
             dest_path = os.path.join(frame_counter_folder, f"{i}.png")
             shutil.copyfile(src_path, dest_path)
 
+    guidance_image = folder_files[0][0]
+    guidance_path = os.path.join(folder_paths[0], guidance_image)
+    guidance_folder = os.path.join(save_path, GUIDANCE_DIR)
+    os.mkdir(guidance_folder)
+    shutil.copyfile(guidance_path, os.path.join(save_path, GUIDANCE_DIR, GUIDANCE_IMAGE))
+
+    return save_path
+
 
 def create_video(input_folder):
 
@@ -158,10 +166,13 @@ def separate_cameras(results_folder, cameras_folder):
         for file in camera_files:
             create_video(os.path.join(cameras_folder, frame_type, file))
 
-# def main():
-#     results_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/results"
-#     cameras_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/cameras"
-#     separate_cameras(results_folder, cameras_folder)
-#
-# if __name__ == "__main__":
-#     main()
+def main():
+    results_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/results"
+    cameras_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/cameras"
+    input_vid = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/test.mp4"
+    output_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/frames"
+    extract_frames(input_vid, output_folder)
+    #separate_cameras(results_folder, cameras_folder)
+
+if __name__ == "__main__":
+    main()
