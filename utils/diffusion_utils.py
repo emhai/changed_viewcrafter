@@ -128,10 +128,10 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
 
     if not text_input:
         prompts = [""]*batch_size
-    assert condition_index is not None, "Error: condition index is None!"
+    #assert condition_index is not None, "Error: condition index is None!"
 
     if condition_index is None:
-        img = guidance_image.to(model.device)
+        img = guidance_image
         print(f"shape: {img.shape}")
     else:
         img = videos[:, :, condition_index[0]]  # bchw

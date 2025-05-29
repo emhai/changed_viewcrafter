@@ -10,5 +10,5 @@ python inference.py \
 --video_length 16 \
 --device 'cuda:0' \
 --height 576 --width 1024 \
---model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \
---exp_name 'espresso_fixedpose_2cams_60frames_prompt'
+--model_path ./checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth \
+--exp_name 'espresso_fixedpose_2cams_60frames_mast3r'

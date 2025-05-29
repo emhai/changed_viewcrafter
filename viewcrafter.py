@@ -3,6 +3,7 @@ import sys
 from configs.master_config import DEPTHS_DIR, PREDICTED_CAMERA_POSES_FILE, PREDICTED_FOCALS_FILE
 
 sys.path.append('./extern/dust3r')
+sys.path.append('./extern/mast3r')
 from dust3r.inference import inference, load_model
 from dust3r.utils.image import load_images
 from dust3r.image_pairs import make_pairs
@@ -32,12 +33,13 @@ from pathlib import Path
 from torchvision.utils import save_image
 import time
 
+from mast3r.model import AsymmetricMASt3R
 
 class ViewCrafter:
     def __init__(self, opts, gradio = False):
         self.opts = opts
         self.device = opts.device
-        self.setup_dust3r()
+        self.setup_mast3r()
         self.setup_diffusion()
         # initialize ref images, pcd
         if not gradio:
@@ -48,12 +50,15 @@ class ViewCrafter:
 
                 if self.opts.mode == 'multi_video_interp': # videos as input
 
-                    self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
+                    self.first_run = True
+                    self.guidance_image = None
+
+                    # self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
                     original_save_dir = self.opts.save_dir
                     input_dir = os.path.join(original_save_dir, INPUTS_DIR)
                     results_dir = os.path.join(original_save_dir, RESULTS_DIR)
                     all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
-                    # all_frames = all_frames[34:] # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
+                    all_frames = all_frames[11:] # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
                     print(all_frames)
                     for frame in all_frames:
                         print("running frame", int(frame) + 1, "/", len(all_frames))
@@ -88,7 +93,7 @@ class ViewCrafter:
         
     def run_dust3r(self, input_images,clean_pc = False):
         pairs = make_pairs(input_images, scene_graph='complete', prefilter=None, symmetrize=True)
-        output = inference(pairs, self.dust3r, self.device, batch_size=self.opts.batch_size)
+        output = inference(pairs, self.mast3r, self.device, batch_size=self.opts.batch_size)
 
         mode = GlobalAlignerMode.PointCloudOptimizer #if len(self.images) > 2 else GlobalAlignerMode.PairViewer
 
@@ -168,17 +173,22 @@ class ViewCrafter:
         #     asdf = (image['img_ori'].squeeze(0).permute(1, 2, 0) + 1.) / 2.
         #     all_images.append(asdf)
 
+        if self.first_run:
+            self.guidance_image = videos[:, :, condition_index[0]]  # bchw
+            self.first_run = False
+
+
         with torch.no_grad(), torch.cuda.amp.autocast():
             # [1,1,c,t,h,w]
-            batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape, self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta, \
-                               self.opts.unconditional_guidance_scale, self.opts.cfg_img, self.opts.frame_stride, self.opts.text_input, self.opts.multiple_cond_cfg, self.opts.timestep_spacing, self.opts.guidance_rescale, condition_index)
+            # batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape, self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta, \
+            #                    self.opts.unconditional_guidance_scale, self.opts.cfg_img, self.opts.frame_stride, self.opts.text_input, self.opts.multiple_cond_cfg, self.opts.timestep_spacing, self.opts.guidance_rescale, condition_index)
 
-            # batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape,
-            #                                        self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta,
-            #                                        self.opts.unconditional_guidance_scale, self.opts.cfg_img,
-            #                                        self.opts.frame_stride, self.opts.text_input,
-            #                                        self.opts.multiple_cond_cfg, self.opts.timestep_spacing,
-            #                                        self.opts.guidance_rescale, None, guidance_image)
+            batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape,
+                                                   self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta,
+                                                   self.opts.unconditional_guidance_scale, self.opts.cfg_img,
+                                                   self.opts.frame_stride, self.opts.text_input,
+                                                   self.opts.multiple_cond_cfg, self.opts.timestep_spacing,
+                                                   self.opts.guidance_rescale, None, self.guidance_image)
 
             # save_results_seperate(batch_samples[0], self.opts.save_dir, fps=8)
             # torch.Size([1, 3, 25, 576, 1024]) [-1,1]
@@ -322,6 +332,9 @@ class ViewCrafter:
 
     def setup_dust3r(self):
         self.dust3r = load_model(self.opts.model_path, self.device)
+
+    def setup_mast3r(self):
+        self.mast3r = AsymmetricMASt3R.from_pretrained(self.opts.model_path).to(self.device)
     
     def load_initial_images(self, image_dir):
         ## load images
