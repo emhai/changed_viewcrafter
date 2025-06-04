@@ -53,12 +53,14 @@ class ViewCrafter:
                     self.first_run = True
                     self.guidance_image = None
 
-                    # self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
+                    self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
                     original_save_dir = self.opts.save_dir
                     input_dir = os.path.join(original_save_dir, INPUTS_DIR)
                     results_dir = os.path.join(original_save_dir, RESULTS_DIR)
                     all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
-                    all_frames = all_frames[11:] # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
+                    all_frames = all_frames[:16]
+                    # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
+                    # or if only frames 0-16 should be processed e.g.
                     print(all_frames)
                     for frame in all_frames:
                         print("running frame", int(frame) + 1, "/", len(all_frames))
@@ -166,13 +168,6 @@ class ViewCrafter:
         videos = (renderings * 2. - 1.).permute(3,0,1,2).unsqueeze(0).to(self.device)
         condition_index = [0]
 
-        # guidance_folder = os.path.join(self.outer_folder, GUIDANCE_DIR)
-        # images = load_images(guidance_folder, size=512, force_1024=True)
-        # all_images = []
-        # for image in images:
-        #     asdf = (image['img_ori'].squeeze(0).permute(1, 2, 0) + 1.) / 2.
-        #     all_images.append(asdf)
-
         if self.first_run:
             self.guidance_image = videos[:, :, condition_index[0]]  # bchw
             self.first_run = False
@@ -209,28 +204,20 @@ class ViewCrafter:
         pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)] # a list of points of size whc
         depth = [i.detach() for i in self.scene.get_depthmaps()]
 
-        if len(self.images) == 2:
-            masks = None
-            mask_pc = False
-        else:
-            ## masks for cleaner point cloud
-            self.scene.min_conf_thr = float(self.scene.conf_trf(torch.tensor(self.opts.min_conf_thr)))
+        ## masks for cleaner point cloud
+        self.scene.min_conf_thr = float(self.scene.conf_trf(torch.tensor(self.opts.min_conf_thr)))
+        depth = self.scene.get_depthmaps()
+        save_depth(depth, os.path.join(self.opts.save_dir, DEPTHS_DIR), False, True)
+        masks = self.scene.get_masks()
+        save_masks(masks, os.path.join(self.opts.save_dir, MASKS_DIR, "before"), False, True)
+        # background suppression masks
+        bgs_mask = [dpt > self.opts.bg_trd*(torch.max(dpt[40:-40,:])+torch.min(dpt[40:-40,:])) for dpt in depth]
+        save_masks(bgs_mask, os.path.join(self.opts.save_dir, MASKS_DIR, "bgs"), False, True)
+        masks_new = [m+mb for m, mb in zip(masks,bgs_mask)]
+        save_masks(masks_new, os.path.join(self.opts.save_dir, MASKS_DIR, "new"), False, True)
 
-            depth = self.scene.get_depthmaps()
-            save_depth(depth, os.path.join(self.opts.save_dir, DEPTHS_DIR), False, True)
-
-            masks = self.scene.get_masks()
-            save_masks(masks, os.path.join(self.opts.save_dir, MASKS_DIR, "before"), False, True)
-
-            # background suppression masks
-            bgs_mask = [dpt > self.opts.bg_trd*(torch.max(dpt[40:-40,:])+torch.min(dpt[40:-40,:])) for dpt in depth]
-            save_masks(bgs_mask, os.path.join(self.opts.save_dir, MASKS_DIR, "bgs"), False, True)
-
-            masks_new = [m+mb for m, mb in zip(masks,bgs_mask)]
-            save_masks(masks_new, os.path.join(self.opts.save_dir, MASKS_DIR, "new"), False, True)
-
-            masks = to_numpy(masks_new)
-            mask_pc = True
+        masks = to_numpy(masks_new)
+        mask_pc = True
 
         imgs = np.array(self.scene.imgs)
 
@@ -310,6 +297,9 @@ class ViewCrafter:
 
     def setup_diffusion(self):
         seed_everything(self.opts.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
         config = OmegaConf.load(self.opts.config)
         model_config = config.pop("model", OmegaConf.create())

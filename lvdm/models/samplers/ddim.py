@@ -71,7 +71,7 @@ class DDIMSampler(object):
                eta=0.,
                mask=None,
                x0=None,
-               temperature=1.,
+               temperature=0.,
                noise_dropout=0.,
                score_corrector=None,
                corrector_kwargs=None,

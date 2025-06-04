@@ -167,12 +167,12 @@ def separate_cameras(results_folder, cameras_folder):
             create_video(os.path.join(cameras_folder, frame_type, file))
 
 def main():
-    results_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/results"
-    cameras_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixed_pose_3_cams/cameras"
-    input_vid = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/test.mp4"
-    output_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/frames"
-    extract_frames(input_vid, output_folder)
-    #separate_cameras(results_folder, cameras_folder)
+    results_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixedpose_2cams_60frames_mast3r_sameguidance_det-sampling_temp/results"
+    cameras_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixedpose_2cams_60frames_mast3r_sameguidance_det-sampling_temp/cameras"
+    # input_vid = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/test.mp4"
+    # output_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/frames"
+    # extract_frames(input_vid, output_folder)
+    separate_cameras(results_folder, cameras_folder)
 
 if __name__ == "__main__":
     main()
