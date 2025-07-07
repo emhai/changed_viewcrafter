@@ -32,7 +32,7 @@ from utils.diffusion_utils import instantiate_from_config,load_model_checkpoint,
 from pathlib import Path
 from torchvision.utils import save_image
 import time
-
+import pickle
 from mast3r.model import AsymmetricMASt3R
 
 class ViewCrafter:
@@ -56,6 +56,11 @@ class ViewCrafter:
             all_frames = all_frames[:16]
             # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
             # or if only frames 0-16 should be processed e.g.
+
+            # save pickle here
+            with open('/home/emmahaidacher/Masterthesis/MasterThesis/pickle.pkl', 'rb') as f:
+                pickle_scene = pickle.load(f)
+
             print(all_frames)
             for frame in all_frames:
                 print("running frame", int(frame) + 1, "/", len(all_frames))
@@ -148,6 +153,7 @@ class ViewCrafter:
         poses_file_path = os.path.join(os.path.dirname(self.opts.save_dir), PREDICTED_CAMERA_POSES_FILE)
         focals_file_path = os.path.join(os.path.dirname(self.opts.save_dir), PREDICTED_FOCALS_FILE)
         already_predicted = os.path.exists(poses_file_path)
+        already_predicted = False
         init_string = "mst"
 
         if already_predicted:

@@ -15,7 +15,7 @@ if __name__=="__main__":
         opts.exp_name = f'{prefix}_{os.path.splitext(os.path.basename(opts.image_dir))[0]}'
     opts.save_dir = os.path.join(opts.out_dir,opts.exp_name)
     os.makedirs(opts.save_dir,exist_ok=True)
-    pvd = ViewCrafter(opts) # multi-video handled in constructor
+    pvd = ViewCrafter(opts) # video handled in constructor
 
 
     if opts.mode == 'single_view_target':
