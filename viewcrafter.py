@@ -39,63 +39,107 @@ class ViewCrafter:
     def __init__(self, opts, gradio = False):
         self.opts = opts
         self.device = opts.device
-        self.setup_mast3r()
+        # self.setup_mast3r()
+        self.setup_dust3r()
         self.setup_diffusion()
         # initialize ref images, pcd
+
+        if self.opts.mode == 'single_video_interp':
+            self.first_run = True
+            self.guidance_image = None
+
+            self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
+            original_save_dir = self.opts.save_dir
+            input_dir = os.path.join(original_save_dir, INPUTS_DIR)
+            results_dir = os.path.join(original_save_dir, RESULTS_DIR)
+            all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
+            all_frames = all_frames[:16]
+            # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
+            # or if only frames 0-16 should be processed e.g.
+            print(all_frames)
+            for frame in all_frames:
+                print("running frame", int(frame) + 1, "/", len(all_frames))
+                start = time.time()
+
+                folder_directory = os.path.join(input_dir, frame)
+                self.opts.image_dir = os.path.join(folder_directory, os.listdir(folder_directory)[0])
+                print(self.opts.image_dir)
+                self.opts.save_dir = os.path.join(results_dir, frame)
+
+                os.mkdir(self.opts.save_dir)
+                self.images, self.img_ori = self.load_initial_images(image_dir=self.opts.image_dir)
+                self.run_dust3r(input_images=self.images)
+                # import pickle here?
+
+                self.opts.mode = 'single_view_txt'
+                self.nvs_single_view()
+
+                self.opts.save_dir = original_save_dir
+                end = time.time()
+                time_per_frame = (end - start) / 60
+                print("elapsed time: {:.2f}min".format(time_per_frame))
+                remaining_time = time_per_frame * (len(all_frames) - int(frame))
+                print("estimated remaining time: {:.2f}min, {:.2f}h\n".format(remaining_time,
+                                                                              remaining_time / 60))
+
+            separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR),
+                             os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
+            self.opts.mode = 'single_video_interp'
+            return
+
+        elif self.opts.mode == 'multi_video_interp':  # videos as input
+
+            self.first_run = True
+            self.guidance_image = None
+
+            self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
+            original_save_dir = self.opts.save_dir
+            input_dir = os.path.join(original_save_dir, INPUTS_DIR)
+            results_dir = os.path.join(original_save_dir, RESULTS_DIR)
+            all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
+            # all_frames = all_frames[:16]
+            # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
+            # or if only frames 0-16 should be processed e.g.
+            print(all_frames)
+            for frame in all_frames:
+                print("running frame", int(frame) + 1, "/", len(all_frames))
+                start = time.time()
+
+                self.opts.image_dir = os.path.join(input_dir, frame)
+                self.opts.save_dir = os.path.join(results_dir, frame)
+
+                os.mkdir(self.opts.save_dir)
+                self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
+                self.run_dust3r(input_images=self.images, clean_pc=True)
+                # import pickle here?
+                # self.pc_path = f"/home/emmahaidacher/Masterthesis/MasterThesis/single_video_pc/point-clouds/single_pc_{frame}.ply"
+                self.nvs_sparse_view_interp()
+
+                self.opts.save_dir = original_save_dir
+                end = time.time()
+                time_per_frame = (end - start) / 60
+                print("elapsed time: {:.2f}min".format(time_per_frame))
+                remaining_time = time_per_frame * (len(all_frames) - int(frame))
+                print("estimated remaining time: {:.2f}min, {:.2f}h\n".format(remaining_time, remaining_time / 60))
+
+            separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR),
+                             os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
+            return
+        elif self.opts.mode == 'only_diffusion': return
+
         if not gradio:
             if os.path.isfile(self.opts.image_dir):
                 self.images, self.img_ori = self.load_initial_images(image_dir=self.opts.image_dir)
                 self.run_dust3r(input_images=self.images)
             elif os.path.isdir(self.opts.image_dir):
-
-                if self.opts.mode == 'multi_video_interp': # videos as input
-
-                    self.first_run = True
-                    self.guidance_image = None
-
-                    self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
-                    original_save_dir = self.opts.save_dir
-                    input_dir = os.path.join(original_save_dir, INPUTS_DIR)
-                    results_dir = os.path.join(original_save_dir, RESULTS_DIR)
-                    all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
-                    all_frames = all_frames[:16]
-                    # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
-                    # or if only frames 0-16 should be processed e.g.
-                    print(all_frames)
-                    for frame in all_frames:
-                        print("running frame", int(frame) + 1, "/", len(all_frames))
-                        start = time.time()
-
-                        self.opts.image_dir = os.path.join(input_dir, frame)
-                        self.opts.save_dir = os.path.join(results_dir, frame)
-
-                        os.mkdir(self.opts.save_dir)
-                        self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
-                        self.run_dust3r(input_images=self.images, clean_pc=True)
-                        self.nvs_sparse_view_interp()
-
-                        self.opts.save_dir = original_save_dir
-                        end = time.time()
-                        time_per_frame = (end - start) / 60
-                        print("elapsed time: {:.2f}min".format(time_per_frame))
-                        remaining_time = time_per_frame * (len(all_frames) - int(frame))
-                        print("estimated remaining time: {:.2f}min, {:.2f}h\n".format(remaining_time, remaining_time / 60))
-
-                    separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR), os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
-
-                elif self.opts.mode == 'only_diffusion':
-                    return
-                # images as input
-                else:
-                    self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
-                    self.run_dust3r(input_images=self.images, clean_pc = True)
-                    self.nvs_sparse_view_interp()
+                self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
+                self.run_dust3r(input_images=self.images, clean_pc=True)
             else:
-                print(f"{self.opts.image_dir} doesn't exist")           
-        
-    def run_dust3r(self, input_images,clean_pc = False):
+                print(f"{self.opts.image_dir} doesn't exist")
+
+    def run_dust3r(self, input_images, clean_pc = False):
         pairs = make_pairs(input_images, scene_graph='complete', prefilter=None, symmetrize=True)
-        output = inference(pairs, self.mast3r, self.device, batch_size=self.opts.batch_size)
+        output = inference(pairs, self.dust3r, self.device, batch_size=self.opts.batch_size)
 
         mode = GlobalAlignerMode.PointCloudOptimizer #if len(self.images) > 2 else GlobalAlignerMode.PairViewer
 
@@ -195,6 +239,7 @@ class ViewCrafter:
     """
 
     def nvs_sparse_view_interp(self):
+
 
         c2ws = self.scene.get_im_poses().detach()
         principal_points = self.scene.get_principal_points().detach()
@@ -297,9 +342,9 @@ class ViewCrafter:
 
     def setup_diffusion(self):
         seed_everything(self.opts.seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True, warn_only=True)
+        #torch.backends.cudnn.deterministic = True
+        #torch.backends.cudnn.benchmark = False
+        #torch.use_deterministic_algorithms(True, warn_only=True)
 
         config = OmegaConf.load(self.opts.config)
         model_config = config.pop("model", OmegaConf.create())
@@ -450,12 +495,12 @@ class ViewCrafter:
             if phi[-1] == 0. and theta[-1] == 0. and r[-1] == 0.:
                 render_results[-1] = self.img_ori
 
-        save_video(render_results, os.path.join(self.opts.save_dir, 'render0.mp4'))
+        save_video(render_results, os.path.join(self.opts.save_dir, 'render.mp4'), os.path.join(self.opts.save_dir, RENDER_FRAMES))
         save_pointcloud_with_normals([imgs[-1]], [pcd[-1]], msk=None,
-                                     save_path=os.path.join(self.opts.save_dir, 'pcd0.ply'), mask_pc=False,
+                                     save_path=os.path.join(self.opts.save_dir, 'pcd.ply'), mask_pc=False,
                                      reduce_pc=False)
         diffusion_results = self.run_diffusion(render_results)
-        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, 'diffusion0.mp4'))
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, 'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
 
         return diffusion_results
 

@@ -1,6 +1,7 @@
 python inference.py \
---image_dir /media/emmahaidacher/Volume/DATASETS/INTERNET/espresso_short/2_videos_short/0.mp4 \
+--image_dir /media/emmahaidacher/Volume/DATASETS/INTERNET/espresso_short/1_video_short/ \
 --out_dir /home/emmahaidacher/Masterthesis/MasterThesis/good_results/ \
+--traj_txt test/own_trajs/left.txt \
 --mode 'single_video_interp' \
 --bg_trd 0.2 \
 --seed 123 \
@@ -11,5 +12,5 @@ python inference.py \
 --video_length 16 \
 --device 'cuda:0' \
 --height 576 --width 1024 \
---model_path ./checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth \
---exp_name 'espresso_1cam_30frames_easi3r'
+--model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \
+--exp_name 'espresso_1cam_16frames'

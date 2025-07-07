@@ -33,6 +33,9 @@ if __name__=="__main__":
     elif opts.mode == 'multi_video_interp':
         print("Finished Multi Video Interpolation")
 
+    elif opts.mode == 'single_video_interp':
+        print("Finished Single Video Interpolation")
+
     elif opts.mode == 'only_diffusion':
         pvd.only_diffusion()
 
