@@ -59,11 +59,19 @@ class ViewCrafter:
 
             # save pickle here
             with open('/home/emmahaidacher/Masterthesis/MasterThesis/pickle.pkl', 'rb') as f:
-                pickle_scene = pickle.load(f)
+                self.pickle_im_poses = pickle.load(f)
+                self.pickle_principal_points = pickle.load(f)
+                self.pickle_focals = pickle.load(f)
+                self.pickle_pts3d = pickle.load(f)
+                self.pickle_depths = pickle.load(f)
+                self.pickle_imgs = pickle.load(f)
+
+            self.run_number = 0
 
             print(all_frames)
             for frame in all_frames:
-                print("running frame", int(frame) + 1, "/", len(all_frames))
+
+                print("running frame", int(frame) + 1, "/", len(all_frames), "run_no: ", self.run_number)
                 start = time.time()
 
                 folder_directory = os.path.join(input_dir, frame)
@@ -86,6 +94,7 @@ class ViewCrafter:
                 remaining_time = time_per_frame * (len(all_frames) - int(frame))
                 print("estimated remaining time: {:.2f}min, {:.2f}h\n".format(remaining_time,
                                                                               remaining_time / 60))
+                self.run_number = self.run_number + 1
 
             separate_cameras(os.path.join(self.opts.save_dir, RESULTS_DIR),
                              os.path.join(self.opts.save_dir, SEPERATED_CAMERAS_DIR))
@@ -116,8 +125,6 @@ class ViewCrafter:
                 os.mkdir(self.opts.save_dir)
                 self.images, self.img_ori = self.load_initial_dir(image_dir=self.opts.image_dir)
                 self.run_dust3r(input_images=self.images, clean_pc=True)
-                # import pickle here?
-                # self.pc_path = f"/home/emmahaidacher/Masterthesis/MasterThesis/single_video_pc/point-clouds/single_pc_{frame}.ply"
                 self.nvs_sparse_view_interp()
 
                 self.opts.save_dir = original_save_dir
@@ -380,7 +387,7 @@ class ViewCrafter:
     def load_initial_images(self, image_dir):
         ## load images
         ## dict_keys(['img', 'true_shape', 'idx', 'instance', 'img_ori']),张量形式
-        images = load_images([image_dir], size=512,force_1024 = True)
+        images = load_images([image_dir], size=512, force_1024 = True)
         img_ori = (images[0]['img_ori'].squeeze(0).permute(1,2,0)+1.)/2. # [576,1024,3] [0,1]
 
         if len(images) == 1:
@@ -434,6 +441,13 @@ class ViewCrafter:
 
     def nvs_single_view(self, gradio=False):
         # 最后一个view为 0 pose
+        pure_c2ws = self.scene.get_im_poses().detach()[1:]
+        pure_principal_points = self.scene.get_principal_points().detach()[1:]  # cx cy
+        pure_focals = self.scene.get_focals().detach()[1:]
+        pure_pds3d = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]
+        pure_depth = [i.detach() for i in self.scene.get_depthmaps()]
+        pure_imgs = self.scene.imgs
+
         c2ws = self.scene.get_im_poses().detach()[1:]
         principal_points = self.scene.get_principal_points().detach()[1:]  # cx cy
         focals = self.scene.get_focals().detach()[1:]
@@ -441,6 +455,13 @@ class ViewCrafter:
         H, W = int(shape[0][0]), int(shape[0][1])
         pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]  # a list of points of size whc
         depth = [i.detach() for i in self.scene.get_depthmaps()]
+
+        c2ws = self.pickle_im_poses[self.run_number].unsqueeze(0)
+        principal_points = self.pickle_principal_points[self.run_number].unsqueeze(0)
+        focals = self.pickle_focals[self.run_number].unsqueeze(0)
+        pcd = [self.pickle_pts3d[self.run_number], self.pickle_pts3d[self.run_number]]
+        depth = [self.pickle_depths[self.run_number], self.pickle_depths[self.run_number]]
+
         depth_avg = depth[-1][H // 2, W // 2]  # 以图像中心处的depth(z)为球心旋转
         radius = depth_avg * self.opts.center_scale  # 缩放调整
 
@@ -448,7 +469,7 @@ class ViewCrafter:
         c2ws, pcd = world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius,
                                        elevation=self.opts.elevation, device=self.device)
 
-        imgs = np.array(self.scene.imgs)
+        imgs = np.array([self.pickle_imgs[self.run_number], self.pickle_imgs[self.run_number]])
 
         masks = None
 

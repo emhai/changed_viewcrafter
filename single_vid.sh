@@ -13,4 +13,4 @@ python inference.py \
 --device 'cuda:0' \
 --height 576 --width 1024 \
 --model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \
---exp_name 'espresso_1cam_16frames'
+--exp_name 'espresso_1cam_16frames_'

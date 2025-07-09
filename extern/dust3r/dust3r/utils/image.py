@@ -85,7 +85,7 @@ def _resize_pil_image(img, long_edge_size):
     return img.resize(new_size, interp)
 
 
-def load_images(folder_or_list, size, square_ok=False,force_1024 = False):
+def load_images(folder_or_list, size, square_ok=False, force_1024 = False):
     """ open and convert all images in a list or folder to proper input format for DUSt3R
     """
     if isinstance(folder_or_list, str):
