@@ -15,7 +15,7 @@ import cv2  # noqa
 from PIL import Image, ImageOps
 
 
-def center_crop_pil_image(input_image, target_width=1024, target_height=576):
+def center_crop_pil_image(input_image, target_width=1024, target_height=768):
     w, h = input_image.size
     h_ratio = h / target_height
     w_ratio = w / target_width

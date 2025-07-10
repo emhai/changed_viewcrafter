@@ -451,14 +451,17 @@ class ViewCrafter:
         c2ws = self.scene.get_im_poses().detach()[1:]
         principal_points = self.scene.get_principal_points().detach()[1:]  # cx cy
         focals = self.scene.get_focals().detach()[1:]
+
         shape = self.images[0]['true_shape']
-        H, W = int(shape[0][0]), int(shape[0][1])
+        shape = self.pickle_imgs[self.run_number].shape
+        H, W = int(shape[0]), int(shape[1])
         pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]  # a list of points of size whc
         depth = [i.detach() for i in self.scene.get_depthmaps()]
 
-        c2ws = self.pickle_im_poses[self.run_number].unsqueeze(0)
+        # c2ws = self.pickle_im_poses[self.run_number].unsqueeze(0)
         principal_points = self.pickle_principal_points[self.run_number].unsqueeze(0)
         focals = self.pickle_focals[self.run_number].unsqueeze(0)
+
         pcd = [self.pickle_pts3d[self.run_number], self.pickle_pts3d[self.run_number]]
         depth = [self.pickle_depths[self.run_number], self.pickle_depths[self.run_number]]
 
@@ -515,7 +518,7 @@ class ViewCrafter:
             raise KeyError(f"Invalid Mode: {self.opts.mode}")
 
         render_results, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, camera_traj, num_views)
-        render_results = F.interpolate(render_results.permute(0, 3, 1, 2), size=(576, 1024), mode='bilinear',
+        render_results = F.interpolate(render_results.permute(0, 3, 1, 2), size=(768, 1024), mode='bilinear',
                                        align_corners=False).permute(0, 2, 3, 1)
         render_results[0] = self.img_ori
         if self.opts.mode == 'single_view_txt':
