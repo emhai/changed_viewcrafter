@@ -1,7 +1,7 @@
 python inference.py \
---image_dir test/images/boy.png \
+--image_dir /home/emmahaidacher/Masterthesis/MasterThesis/good_results/easi3r/goats/doesthiswork.png \
 --out_dir ./output \
---traj_txt test/trajs/loop2.txt \
+--traj_txt test/trajs/left.txt \
 --mode 'single_view_txt' \
 --center_scale 1. \
 --elevation=5 \

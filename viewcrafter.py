@@ -47,6 +47,7 @@ class ViewCrafter:
         if self.opts.mode == 'single_video_interp':
             self.first_run = True
             self.guidance_image = None
+            self.prev_latent = None
 
             self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
             original_save_dir = self.opts.save_dir
@@ -81,7 +82,7 @@ class ViewCrafter:
 
                 os.mkdir(self.opts.save_dir)
                 self.images, self.img_ori = self.load_initial_images(image_dir=self.opts.image_dir)
-                self.run_dust3r(input_images=self.images)
+                # self.run_dust3r(input_images=self.images)
                 # import pickle here?
 
                 self.opts.mode = 'single_view_txt'
@@ -240,8 +241,9 @@ class ViewCrafter:
                                                    self.opts.unconditional_guidance_scale, self.opts.cfg_img,
                                                    self.opts.frame_stride, self.opts.text_input,
                                                    self.opts.multiple_cond_cfg, self.opts.timestep_spacing,
-                                                   self.opts.guidance_rescale, None, self.guidance_image)
+                                                   self.opts.guidance_rescale, None, self.guidance_image, self.prev_latent, 0.8)
 
+            #self.prev_latent = current_latent
             # save_results_seperate(batch_samples[0], self.opts.save_dir, fps=8)
             # torch.Size([1, 3, 25, 576, 1024]) [-1,1]
 
@@ -298,6 +300,92 @@ class ViewCrafter:
         save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
         torch.Size([25, 576, 1024, 3])
         return diffusion_results
+    """
+    ####################################################################################################################
+    """
+    
+    def nvs_single_view(self, gradio=False):
+        # 最后一个view为 0 pose
+
+        shape = self.pickle_imgs[self.run_number].shape
+        H, W = int(shape[0]), int(shape[1])
+
+        c2ws = self.pickle_im_poses[self.run_number].unsqueeze(0)
+        principal_points = self.pickle_principal_points[self.run_number].unsqueeze(0)
+        focals = self.pickle_focals[self.run_number].unsqueeze(0)
+
+        pcd = [self.pickle_pts3d[self.run_number], self.pickle_pts3d[self.run_number]]
+        depth = [self.pickle_depths[self.run_number], self.pickle_depths[self.run_number]]
+
+        depth_avg = depth[-1][H // 2, W // 2]  # 以图像中心处的depth(z)为球心旋转
+        radius = depth_avg * self.opts.center_scale  # 缩放调整
+
+        ## change coordinate
+        c2ws, pcd = world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius,
+                                       elevation=self.opts.elevation, device=self.device)
+
+        imgs = np.array([self.pickle_imgs[self.run_number], self.pickle_imgs[self.run_number]])
+
+        masks = None
+
+        if self.opts.mode == 'single_view_nbv':
+            ## 输入candidate->渲染mask->最大mask对应的pose作为nbv
+            ## nbv模式下self.opts.d_theta[0], self.opts.d_phi[0]代表search space中的网格theta, phi之间的间距; self.opts.d_phi[0]的符号代表方向,分为左右两个方向
+            ## FIXME hard coded candidate view数量, 以left为例,第一次迭代从[左,左上]中选取, 从第二次开始可以从[左,左上,左下]中选取
+            num_candidates = 2
+            candidate_poses, thetas, phis = generate_candidate_poses(c2ws, H, W, focals, principal_points,
+                                                                     self.opts.d_theta[0], self.opts.d_phi[0],
+                                                                     num_candidates, self.device)
+            _, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, candidate_poses, num_candidates)
+            nbv_id = torch.argmin(viewmask.sum(dim=[1, 2, 3])).item()
+            save_image(viewmask.permute(0, 3, 1, 2),
+                       os.path.join(self.opts.save_dir, f"candidate_mask0_nbv{nbv_id}.png"), normalize=True,
+                       value_range=(0, 1))
+            theta_nbv = thetas[nbv_id]
+            phi_nbv = phis[nbv_id]
+            # generate camera trajectory from T_curr to T_nbv
+            camera_traj, num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, theta_nbv, phi_nbv,
+                                                             self.opts.d_r[0], self.opts.video_length, self.device)
+            # 重置elevation
+            self.opts.elevation -= theta_nbv
+        elif self.opts.mode == 'single_view_target':
+            camera_traj, num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, self.opts.d_theta[0],
+                                                             self.opts.d_phi[0], self.opts.d_r[0],
+                                                             self.opts.d_x[0] * depth_avg / focals.item(),
+                                                             self.opts.d_y[0] * depth_avg / focals.item(),
+                                                             self.opts.video_length, self.device)
+        elif self.opts.mode == 'single_view_txt':
+            if not gradio:
+                with open(self.opts.traj_txt, 'r') as file:
+                    lines = file.readlines()
+                    phi = [float(i) for i in lines[0].split()]
+                    theta = [float(i) for i in lines[1].split()]
+                    r = [float(i) for i in lines[2].split()]
+            else:
+                phi, theta, r = self.gradio_traj
+            camera_traj, num_views = generate_traj_txt(c2ws, H, W, focals, principal_points, phi, theta, r,
+                                                       self.opts.video_length, self.device, viz_traj=True,
+                                                       save_dir=self.opts.save_dir)
+        else:
+            raise KeyError(f"Invalid Mode: {self.opts.mode}")
+
+        render_results, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, camera_traj, num_views)
+        render_results = F.interpolate(render_results.permute(0, 3, 1, 2), size=(768, 1024), mode='bilinear',
+                                       align_corners=False).permute(0, 2, 3, 1)
+        render_results[0] = self.img_ori
+        if self.opts.mode == 'single_view_txt':
+            if phi[-1] == 0. and theta[-1] == 0. and r[-1] == 0.:
+                render_results[-1] = self.img_ori
+
+        save_video(render_results, os.path.join(self.opts.save_dir, 'render.mp4'), os.path.join(self.opts.save_dir, RENDER_FRAMES))
+        save_pointcloud_with_normals([imgs[-1]], [pcd[-1]], msk=None,
+                                     save_path=os.path.join(self.opts.save_dir, 'pcd.ply'), mask_pc=False,
+                                     reduce_pc=False)
+        diffusion_results = self.run_diffusion(render_results)
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, 'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
+
+        return diffusion_results
+    
     """
     ####################################################################################################################
     """
@@ -439,98 +527,145 @@ class ViewCrafter:
         
         return traj_dir, gen_dir
 
-    def nvs_single_view(self, gradio=False):
-        # 最后一个view为 0 pose
-        pure_c2ws = self.scene.get_im_poses().detach()[1:]
-        pure_principal_points = self.scene.get_principal_points().detach()[1:]  # cx cy
-        pure_focals = self.scene.get_focals().detach()[1:]
-        pure_pds3d = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]
-        pure_depth = [i.detach() for i in self.scene.get_depthmaps()]
-        pure_imgs = self.scene.imgs
+    def nvs_sparse_view(self,iter):
 
-        c2ws = self.scene.get_im_poses().detach()[1:]
-        principal_points = self.scene.get_principal_points().detach()[1:]  # cx cy
-        focals = self.scene.get_focals().detach()[1:]
-
+        c2ws = self.scene.get_im_poses().detach()
+        principal_points = self.scene.get_principal_points().detach()
+        focals = self.scene.get_focals().detach()
         shape = self.images[0]['true_shape']
-        shape = self.pickle_imgs[self.run_number].shape
-        H, W = int(shape[0]), int(shape[1])
-        pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]  # a list of points of size whc
+        H, W = int(shape[0][0]), int(shape[0][1])
+        pcd = [i.detach() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)] # a list of points of size whc
         depth = [i.detach() for i in self.scene.get_depthmaps()]
+        depth_avg = depth[0][H//2,W//2] #以ref图像中心处的depth(z)为球心旋转
+        radius = depth_avg*self.opts.center_scale #缩放调整
 
-        # c2ws = self.pickle_im_poses[self.run_number].unsqueeze(0)
-        principal_points = self.pickle_principal_points[self.run_number].unsqueeze(0)
-        focals = self.pickle_focals[self.run_number].unsqueeze(0)
+        ## masks for cleaner point cloud
+        self.scene.min_conf_thr = float(self.scene.conf_trf(torch.tensor(self.opts.min_conf_thr)))
+        masks = self.scene.get_masks()
+        depth = self.scene.get_depthmaps()
+        bgs_mask = [dpt > self.opts.bg_trd*(torch.max(dpt[40:-40,:])+torch.min(dpt[40:-40,:])) for dpt in depth]
+        masks_new = [m+mb for m, mb in zip(masks,bgs_mask)]
+        masks = to_numpy(masks_new)
 
-        pcd = [self.pickle_pts3d[self.run_number], self.pickle_pts3d[self.run_number]]
-        depth = [self.pickle_depths[self.run_number], self.pickle_depths[self.run_number]]
+        ## render, 从c2ws[0]即ref image对应的相机开始
+        imgs = np.array(self.scene.imgs)
 
-        depth_avg = depth[-1][H // 2, W // 2]  # 以图像中心处的depth(z)为球心旋转
-        radius = depth_avg * self.opts.center_scale  # 缩放调整
-
-        ## change coordinate
-        c2ws, pcd = world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius,
-                                       elevation=self.opts.elevation, device=self.device)
-
-        imgs = np.array([self.pickle_imgs[self.run_number], self.pickle_imgs[self.run_number]])
-
-        masks = None
-
-        if self.opts.mode == 'single_view_nbv':
+        if self.opts.mode == 'single_view_ref_iterative':
+            print("single_view_ref_iterative")
+            c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=0, r=radius, elevation=self.opts.elevation, device=self.device)
+            camera_traj,num_views = generate_traj_specified(c2ws[0:1], H, W, focals[0:1], principal_points[0:1], self.opts.d_theta[iter], self.opts.d_phi[iter], self.opts.d_r[iter],self.opts.video_length, self.device)
+            render_results, viewmask = self.run_render(pcd, imgs,masks, H, W, camera_traj,num_views)
+            render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
+            render_results[0] = self.img_ori
+        elif self.opts.mode == 'single_view_1drc_iterative':
+            print("single_view_1drc_iterative")
+            self.opts.elevation -= self.opts.d_theta[iter-1]
+            c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius, elevation=self.opts.elevation, device=self.device)
+            camera_traj,num_views = generate_traj_specified(c2ws[-1:], H, W, focals[-1:], principal_points[-1:], self.opts.d_theta[iter], self.opts.d_phi[iter], self.opts.d_r[iter],self.opts.video_length, self.device)
+            render_results, viewmask = self.run_render(pcd, imgs,masks, H, W, camera_traj,num_views)
+            render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
+            render_results[0] = (self.images[-1]['img_ori'].squeeze(0).permute(1,2,0)+1.)/2.
+        elif self.opts.mode == 'single_view_nbv':
+            print("single_view_nbv")
+            c2ws,pcd =  world_point_to_obj(poses=c2ws, points=torch.stack(pcd), k=-1, r=radius, elevation=self.opts.elevation, device=self.device)
             ## 输入candidate->渲染mask->最大mask对应的pose作为nbv
             ## nbv模式下self.opts.d_theta[0], self.opts.d_phi[0]代表search space中的网格theta, phi之间的间距; self.opts.d_phi[0]的符号代表方向,分为左右两个方向
             ## FIXME hard coded candidate view数量, 以left为例,第一次迭代从[左,左上]中选取, 从第二次开始可以从[左,左上,左下]中选取
-            num_candidates = 2
-            candidate_poses, thetas, phis = generate_candidate_poses(c2ws, H, W, focals, principal_points,
-                                                                     self.opts.d_theta[0], self.opts.d_phi[0],
-                                                                     num_candidates, self.device)
-            _, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, candidate_poses, num_candidates)
-            nbv_id = torch.argmin(viewmask.sum(dim=[1, 2, 3])).item()
-            save_image(viewmask.permute(0, 3, 1, 2),
-                       os.path.join(self.opts.save_dir, f"candidate_mask0_nbv{nbv_id}.png"), normalize=True,
-                       value_range=(0, 1))
+            num_candidates = 3
+            candidate_poses,thetas,phis = generate_candidate_poses(c2ws[-1:], H, W, focals[-1:], principal_points[-1:], self.opts.d_theta[0], self.opts.d_phi[0], num_candidates, self.device)
+            _, viewmask = self.run_render(pcd, imgs,masks, H, W, candidate_poses,num_candidates,nbv=True)
+            nbv_id = torch.argmin(viewmask.sum(dim=[1,2,3])).item()
+            save_image(viewmask.permute(0,3,1,2), os.path.join(self.opts.save_dir,f"candidate_mask{iter}_nbv{nbv_id}.png"), normalize=True, value_range=(0, 1))
             theta_nbv = thetas[nbv_id]
             phi_nbv = phis[nbv_id]
             # generate camera trajectory from T_curr to T_nbv
-            camera_traj, num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, theta_nbv, phi_nbv,
-                                                             self.opts.d_r[0], self.opts.video_length, self.device)
+            camera_traj,num_views = generate_traj_specified(c2ws[-1:], H, W, focals[-1:], principal_points[-1:], theta_nbv, phi_nbv, self.opts.d_r[0],self.opts.video_length, self.device)
             # 重置elevation
             self.opts.elevation -= theta_nbv
-        elif self.opts.mode == 'single_view_target':
-            camera_traj, num_views = generate_traj_specified(c2ws, H, W, focals, principal_points, self.opts.d_theta[0],
-                                                             self.opts.d_phi[0], self.opts.d_r[0],
-                                                             self.opts.d_x[0] * depth_avg / focals.item(),
-                                                             self.opts.d_y[0] * depth_avg / focals.item(),
-                                                             self.opts.video_length, self.device)
-        elif self.opts.mode == 'single_view_txt':
-            if not gradio:
-                with open(self.opts.traj_txt, 'r') as file:
-                    lines = file.readlines()
-                    phi = [float(i) for i in lines[0].split()]
-                    theta = [float(i) for i in lines[1].split()]
-                    r = [float(i) for i in lines[2].split()]
-            else:
-                phi, theta, r = self.gradio_traj
-            camera_traj, num_views = generate_traj_txt(c2ws, H, W, focals, principal_points, phi, theta, r,
-                                                       self.opts.video_length, self.device, viz_traj=True,
-                                                       save_dir=self.opts.save_dir)
+            render_results, viewmask = self.run_render(pcd, imgs,masks, H, W, camera_traj,num_views)
+            render_results = F.interpolate(render_results.permute(0,3,1,2), size=(576, 1024), mode='bilinear', align_corners=False).permute(0,2,3,1)
+            render_results[0] = (self.images[-1]['img_ori'].squeeze(0).permute(1,2,0)+1.)/2.
         else:
             raise KeyError(f"Invalid Mode: {self.opts.mode}")
 
-        render_results, viewmask = self.run_render([pcd[-1]], [imgs[-1]], masks, H, W, camera_traj, num_views)
-        render_results = F.interpolate(render_results.permute(0, 3, 1, 2), size=(768, 1024), mode='bilinear',
-                                       align_corners=False).permute(0, 2, 3, 1)
-        render_results[0] = self.img_ori
-        if self.opts.mode == 'single_view_txt':
-            if phi[-1] == 0. and theta[-1] == 0. and r[-1] == 0.:
-                render_results[-1] = self.img_ori
-
-        save_video(render_results, os.path.join(self.opts.save_dir, 'render.mp4'), os.path.join(self.opts.save_dir, RENDER_FRAMES))
-        save_pointcloud_with_normals([imgs[-1]], [pcd[-1]], msk=None,
-                                     save_path=os.path.join(self.opts.save_dir, 'pcd.ply'), mask_pc=False,
-                                     reduce_pc=False)
+        save_video(render_results, os.path.join(self.opts.save_dir, f'render{iter}.mp4'))
+        save_pointcloud_with_normals(imgs, pcd, msk=masks, save_path=os.path.join(self.opts.save_dir, f'pcd{iter}.ply') , mask_pc=True, reduce_pc=False)
         diffusion_results = self.run_diffusion(render_results)
-        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, 'diffusion.mp4'), os.path.join(self.opts.save_dir, DIFFUSION_FRAMES))
-
+        save_video((diffusion_results + 1.0) / 2.0, os.path.join(self.opts.save_dir, f'diffusion{iter}.mp4'))
+        # torch.Size([25, 576, 1024, 3])
         return diffusion_results
+
+    def nvs_single_view_nbv(self):
+        # lef and right
+        # d_theta and a_phi 是搜索空间的顶点间隔
+        all_results = []
+        ## FIXME: hard coded
+        sample_rate = 6
+        max_itr = 3
+
+        idx = 1 #初始包含1张ref image
+        for itr in range(0, max_itr):
+            if itr == 0:
+                self.images = [self.images[0]] #去掉后一份copy
+                diffusion_results_itr = self.nvs_single_view()
+                # diffusion_results_itr = torch.randn([25, 576, 1024, 3]).to(self.device)
+                diffusion_results_itr = diffusion_results_itr.permute(0,3,1,2)
+                all_results.append(diffusion_results_itr)
+            else:
+                for i in range(0+sample_rate, diffusion_results_itr.shape[0], sample_rate):
+                    self.images.append(get_input_dict(diffusion_results_itr[i:i+1,...],idx,dtype = torch.float32))
+                    idx += 1
+                self.run_dust3r(input_images=self.images, clean_pc=True)
+                diffusion_results_itr = self.nvs_sparse_view(itr)
+                # diffusion_results_itr = torch.randn([25, 576, 1024, 3]).to(self.device)
+                diffusion_results_itr = diffusion_results_itr.permute(0,3,1,2)
+                all_results.append(diffusion_results_itr)
+        return all_results
+
+    def nvs_single_view_1drc_iterative(self):
+
+        all_results = []
+        sample_rate = 6
+        idx = 1 #初始包含1张ref image
+        for itr in range(0, len(self.opts.d_phi)):
+            if itr == 0:
+                self.images = [self.images[0]] #去掉后一份copy
+                diffusion_results_itr = self.nvs_single_view()
+                # diffusion_results_itr = torch.randn([25, 576, 1024, 3]).to(self.device)
+                diffusion_results_itr = diffusion_results_itr.permute(0,3,1,2)
+                all_results.append(diffusion_results_itr)
+            else:
+                for i in range(0+sample_rate, diffusion_results_itr.shape[0], sample_rate):
+                    self.images.append(get_input_dict(diffusion_results_itr[i:i+1,...],idx,dtype = torch.float32))
+                    idx += 1
+                self.run_dust3r(input_images=self.images, clean_pc=True)
+                diffusion_results_itr = self.nvs_sparse_view(itr)
+                # diffusion_results_itr = torch.randn([25, 576, 1024, 3]).to(self.device)
+                diffusion_results_itr = diffusion_results_itr.permute(0,3,1,2)
+                all_results.append(diffusion_results_itr)
+        return all_results
+
+    def nvs_single_view_ref_iterative(self):
+
+        all_results = []
+        sample_rate = 6
+        idx = 1 #初始包含1张ref image
+        for itr in range(0, len(self.opts.d_phi)):
+            if itr == 0:
+                self.images = [self.images[0]] #去掉后一份copy
+                diffusion_results_itr = self.nvs_single_view()
+                # diffusion_results_itr = torch.randn([25, 576, 1024, 3]).to(self.device)
+                diffusion_results_itr = diffusion_results_itr.permute(0,3,1,2)
+                all_results.append(diffusion_results_itr)
+            else:
+                for i in range(0+sample_rate, diffusion_results_itr.shape[0], sample_rate):
+                    self.images.append(get_input_dict(diffusion_results_itr[i:i+1,...],idx,dtype = torch.float32))
+                    idx += 1
+                self.run_dust3r(input_images=self.images, clean_pc=True)
+                diffusion_results_itr = self.nvs_sparse_view(itr)
+                # diffusion_results_itr = torch.randn([25, 576, 1024, 3]).to(self.device)
+                diffusion_results_itr = diffusion_results_itr.permute(0,3,1,2)
+                all_results.append(diffusion_results_itr)
+        return all_results
+
 

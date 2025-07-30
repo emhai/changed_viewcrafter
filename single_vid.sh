@@ -1,11 +1,11 @@
 python inference.py \
 --image_dir /media/emmahaidacher/Volume/DATASETS/INTERNET/espresso_short/1_video_short/ \
---out_dir /home/emmahaidacher/Masterthesis/MasterThesis/good_results/ \
+--out_dir /media/emmahaidacher/Volume/GOOD_RESULTS/espresso_1cam_16frames_pickle \
 --traj_txt test/own_trajs/left.txt \
 --mode 'single_video_interp' \
 --bg_trd 0.2 \
 --seed 123 \
---ckpt_path ./checkpoints/model_sparse.ckpt \
+--ckpt_path ./checkpoints/model_16.ckpt \
 --config configs/inference_pvd_1024.yaml \
 --ddim_steps 50 \
 --ddim_eta 0.0 \
