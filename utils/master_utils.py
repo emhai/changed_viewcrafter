@@ -166,13 +166,36 @@ def separate_cameras(results_folder, cameras_folder):
         for file in camera_files:
             create_video(os.path.join(cameras_folder, frame_type, file))
 
+def check_images_for_diff(img1, img2):
+    img1_gray = F.rgb_to_grayscale(img1)
+    img2_gray = F.rgb_to_grayscale(img2)
+
+    # --- 3. Calculate Difference using NumPy ---
+    # Squeeze the channel dimension and convert to numpy for calculation
+    arr1 = img1_resized.squeeze().numpy().astype(np.int16)
+    arr2 = img2_resized.squeeze().numpy().astype(np.int16)
+
+    # Calculate the absolute difference
+    diff = np.abs(arr1 - arr2)
+
+    # Create a binary mask based on the threshold
+    mask = np.where(diff > threshold, 255, 0).astype(np.uint8)
+
+    print(f"Successfully created difference mask from tensors. Found {np.sum(mask > 0)} different pixels.")
+    return mask
+    return thresh
+
+
 def main():
     results_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixedpose_2cams_60frames_mast3r_sameguidance_det-sampling_temp/results"
     cameras_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/good_results/espresso_fixedpose_2cams_60frames_mast3r_sameguidance_det-sampling_temp/cameras"
     # input_vid = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/test.mp4"
     # output_folder = "/home/emmahaidacher/Masterthesis/MasterThesis/noisy_espresso_video/frames"
     # extract_frames(input_vid, output_folder)
-    separate_cameras(results_folder, cameras_folder)
+    img1 = "/media/emmahaidacher/Volume/GOOD_RESULTS/espresso_1cam_16frames_pickle_deflick_reuse_latent_alpha8/camera_frames/0/00001.png"
+    img2 = "/media/emmahaidacher/Volume/GOOD_RESULTS/espresso_1cam_16frames_pickle_deflick_reuse_latent_alpha8/camera_frames/0/00002.png"
+    check_images_for_diff(img1, img2)
+    #separate_cameras(results_folder, cameras_folder)
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,7 @@
 import sys
 
+import matplotlib.pyplot as plt
+
 from configs.master_config import DEPTHS_DIR, PREDICTED_CAMERA_POSES_FILE, PREDICTED_FOCALS_FILE
 
 sys.path.append('./extern/dust3r')
@@ -48,13 +50,14 @@ class ViewCrafter:
             self.first_run = True
             self.guidance_image = None
             self.prev_latent = None
+            self.prev_image = None
 
             self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
             original_save_dir = self.opts.save_dir
             input_dir = os.path.join(original_save_dir, INPUTS_DIR)
             results_dir = os.path.join(original_save_dir, RESULTS_DIR)
             all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
-            all_frames = all_frames[:16]
+            all_frames = all_frames[:4]
             # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
             # or if only frames 0-16 should be processed e.g.
 
@@ -231,21 +234,82 @@ class ViewCrafter:
             self.first_run = False
 
 
+
+        if self.prev_image is not None:
+            image1 = self.prev_image
+            if isinstance(self.img_ori, dict):
+                image2 = self.img_ori[0]
+            else:
+                image2 = self.img_ori
+
+            if self.prev_image.max() > 1.0 or self.prev_image.min() < 0:
+                image1 = self.prev_image.float() / 255.0
+            if image2.max() > 1.0 or image2.min() < 0:
+                image2 = image2.float() / 255.0
+
+            img1 = image1.permute(2, 0, 1).unsqueeze(0) # bchw
+            img2 = image2.permute(2, 0, 1).unsqueeze(0)
+
+            abs_diff = torch.abs(img1 - img2)
+            diff_mask_pixel_space = torch.sum(abs_diff, dim=1, keepdim=True)  # Shape: [1, 1, H, W]
+            threshold = 0.05
+            # Mask is 1.0 where pixels are SIMILAR, 0.0 where they are DIFFERENT
+            mask_pixel_space = (diff_mask_pixel_space < threshold).float()
+
+            easier_mask = Image.open(
+                f"/media/emmahaidacher/Volume/GOOD_RESULTS/easi3r/test_espresso_short16f/dynamic_mask_{self.run_number}.png").convert(
+                "L")
+            to_tensor = transforms.ToTensor()  # Converts to float tensor in range [0, 1]
+            mask_tensor = to_tensor(easier_mask)
+            mask_tensor = mask_tensor.unsqueeze(0)
+            latent_height, latent_width = self.prev_latent.shape[-2:]
+            mask_latent = F.interpolate(
+                mask_tensor,
+                size=(latent_height, latent_width),
+                mode='area'  # 'area' interpolation is robust for downsampling
+            )
+            masks_video = mask_latent.unsqueeze(2).repeat(1, 1, self.opts.video_length, 1, 1)
+
+            fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+
+            axs[0].imshow(mask_tensor.squeeze().numpy(), cmap='gray')
+            axs[0].set_title("Original Binary Mask")
+            axs[0].axis("off")
+
+            axs[1].imshow(mask_latent.squeeze().numpy(), cmap='gray')
+            axs[1].set_title("Downsampled Mask (H//8, W//8)")
+            axs[1].axis("off")
+
+            plt.tight_layout()
+            print(self.opts.save_dir)
+            plt.savefig(os.path.join(self.opts.save_dir, "plot_mask.png"))
+
+            mask = masks_video.to(self.device)
+
+
+        else:
+            mask=None
+
         with torch.no_grad(), torch.cuda.amp.autocast():
             # [1,1,c,t,h,w]
             # batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape, self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta, \
             #                    self.opts.unconditional_guidance_scale, self.opts.cfg_img, self.opts.frame_stride, self.opts.text_input, self.opts.multiple_cond_cfg, self.opts.timestep_spacing, self.opts.guidance_rescale, condition_index)
 
-            batch_samples = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape,
+            batch_samples, current_latent = image_guided_synthesis(self.diffusion, prompts, videos, self.noise_shape,
                                                    self.opts.n_samples, self.opts.ddim_steps, self.opts.ddim_eta,
                                                    self.opts.unconditional_guidance_scale, self.opts.cfg_img,
                                                    self.opts.frame_stride, self.opts.text_input,
                                                    self.opts.multiple_cond_cfg, self.opts.timestep_spacing,
-                                                   self.opts.guidance_rescale, None, self.guidance_image, self.prev_latent, 0.8)
+                                                   self.opts.guidance_rescale, condition_index, self.guidance_image, previous_latent=self.prev_latent
+                                                                   , mask=mask)
 
-            #self.prev_latent = current_latent
             # save_results_seperate(batch_samples[0], self.opts.save_dir, fps=8)
             # torch.Size([1, 3, 25, 576, 1024]) [-1,1]
+            self.prev_latent = current_latent
+            if isinstance(self.img_ori, dict):
+                self.prev_image = self.img_ori[0]
+            else:
+                self.prev_image = self.img_ori
 
         return torch.clamp(batch_samples[0][0].permute(1,2,3,0), -1., 1.) 
 

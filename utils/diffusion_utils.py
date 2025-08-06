@@ -10,7 +10,6 @@ from lvdm.models.samplers.ddim_multiplecond import DDIMSampler as DDIMSampler_mu
 from einops import rearrange, repeat
 
 
-
 # This is https://github.com/Doubiiu/DynamiCrafter/blob/main/utils/utils.py DynamiCrafter utils
 
 def count_params(model, verbose=False):
@@ -121,7 +120,8 @@ def get_latent_z(model, videos):
     return z
 
 def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddim_steps=50, ddim_eta=1., \
-                        unconditional_guidance_scale=1.0, cfg_img=None, fs=None, text_input=False, multiple_cond_cfg=False, timestep_spacing='uniform', guidance_rescale=0.0, condition_index=None, guidance_image=None, **kwargs):
+                        unconditional_guidance_scale=1.0, cfg_img=None, fs=None, text_input=False, multiple_cond_cfg=False,
+                           timestep_spacing='uniform', guidance_rescale=0.0, condition_index=None, guidance_image=None, previous_latent=None, mask=None, **kwargs):
     ddim_sampler = DDIMSampler(model) if not multiple_cond_cfg else DDIMSampler_multicond(model)
     batch_size = noise_shape[0]
     fs = torch.tensor([fs] * batch_size, dtype=torch.long, device=model.device)
@@ -174,7 +174,10 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
         kwargs.update({"unconditional_conditioning_img_nonetext": None})
 
     z0 = None
-    cond_mask = None
+    if mask is not None:#
+        cond_mask = mask
+    else:
+        cond_mask = None
 
     batch_variants = []
     for _ in range(n_samples):
@@ -184,6 +187,10 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
             kwargs.update({"clean_cond": True})
         else:
             cond_z0 = None
+
+        if previous_latent is not None:
+            cond_z0 = previous_latent.clone()
+
         if ddim_sampler is not None:
 
             samples, _ = ddim_sampler.sample(S=ddim_steps,
@@ -208,4 +215,4 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
         batch_variants.append(batch_images)
     ## variants, batch, c, t, h, w
     batch_variants = torch.stack(batch_variants)
-    return batch_variants.permute(1, 0, 2, 3, 4, 5)
+    return batch_variants.permute(1, 0, 2, 3, 4, 5), samples

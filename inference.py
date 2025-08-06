@@ -5,7 +5,7 @@ import os
 from configs.infer_config import get_parser
 from utils.pvd_utils import *
 from datetime import datetime
-
+import json
 
 if __name__=="__main__":
     parser = get_parser() # infer config.py
@@ -15,8 +15,11 @@ if __name__=="__main__":
         opts.exp_name = f'{prefix}_{os.path.splitext(os.path.basename(opts.image_dir))[0]}'
     opts.save_dir = os.path.join(opts.out_dir,opts.exp_name)
     os.makedirs(opts.save_dir,exist_ok=True)
-    pvd = ViewCrafter(opts) # video handled in constructor
 
+    args_dict = vars(opts)
+    with open(os.path.join(opts.save_dir, 'args.json'), 'w') as f:
+        json.dump(args_dict, f, indent=4)
+    pvd = ViewCrafter(opts) # video handled in constructor
 
     if opts.mode == 'single_view_target':
         pvd.nvs_single_view()
