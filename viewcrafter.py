@@ -51,13 +51,15 @@ class ViewCrafter:
             self.guidance_image = None
             self.prev_latent = None
             self.prev_image = None
+s            self.first_image = None
+            self.first_latent = None
 
             self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
             original_save_dir = self.opts.save_dir
             input_dir = os.path.join(original_save_dir, INPUTS_DIR)
             results_dir = os.path.join(original_save_dir, RESULTS_DIR)
             all_frames = sorted(os.listdir(input_dir), key=lambda x: int(os.path.splitext(x)[0]))
-            all_frames = all_frames[:4]
+            all_frames = all_frames[:16]
             # UNCOMMENT IF EXECUTION FAILED for all frames. if you do this, comment out setup_structure()
             # or if only frames 0-16 should be processed e.g.
 
@@ -95,7 +97,7 @@ class ViewCrafter:
                 end = time.time()
                 time_per_frame = (end - start) / 60
                 print("elapsed time: {:.2f}min".format(time_per_frame))
-                remaining_time = time_per_frame * (len(all_frames) - int(frame))
+                remaining_time = time_per_frame * (len(all_frames) - int(frame) + 1)
                 print("estimated remaining time: {:.2f}min, {:.2f}h\n".format(remaining_time,
                                                                               remaining_time / 60))
                 self.run_number = self.run_number + 1
@@ -109,6 +111,10 @@ class ViewCrafter:
 
             self.first_run = True
             self.guidance_image = None
+            self.prev_image = None
+            self.prev_latent = None
+            self.first_image = None
+            self.first_latent = None
 
             self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
             original_save_dir = self.opts.save_dir
