@@ -51,7 +51,7 @@ class ViewCrafter:
             self.guidance_image = None
             self.prev_latent = None
             self.prev_image = None
-s            self.first_image = None
+            self.first_image = None
             self.first_latent = None
 
             self.outer_folder = setup_structure(self.opts.save_dir, self.opts.image_dir)
